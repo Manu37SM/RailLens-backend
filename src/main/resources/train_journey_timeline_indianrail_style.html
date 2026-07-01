@@ -1,0 +1,454 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-sans); }
+
+  .train-header {
+    padding: 16px 20px 14px;
+    border-bottom: 0.5px solid var(--color-border-tertiary);
+  }
+  .train-number {
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--color-text-primary);
+    letter-spacing: 0.5px;
+  }
+  .train-name {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    margin-top: 2px;
+  }
+  .train-meta {
+    display: flex;
+    gap: 16px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+  .meta-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 500;
+  }
+  .chip-orange {
+    background: #FFF4E5;
+    color: #B45309;
+    border: 0.5px solid #FCD08A;
+  }
+  .chip-blue {
+    background: #EFF6FF;
+    color: #1D4ED8;
+    border: 0.5px solid #BFDBFE;
+  }
+  .chip-green {
+    background: #F0FDF4;
+    color: #15803D;
+    border: 0.5px solid #BBF7D0;
+  }
+  .chip-gray {
+    background: var(--color-background-secondary);
+    color: var(--color-text-secondary);
+    border: 0.5px solid var(--color-border-tertiary);
+  }
+
+  .col-headers {
+    display: grid;
+    grid-template-columns: 48px 1fr 90px 90px 64px 70px;
+    gap: 0;
+    padding: 8px 20px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--color-text-tertiary);
+    border-bottom: 0.5px solid var(--color-border-tertiary);
+    background: var(--color-background-secondary);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .stops-list { }
+
+  .stop-row {
+    display: grid;
+    grid-template-columns: 48px 1fr 90px 90px 64px 70px;
+    gap: 0;
+    padding: 0 20px;
+    align-items: stretch;
+    border-bottom: 0.5px solid var(--color-border-tertiary);
+    transition: background 0.12s;
+    position: relative;
+  }
+  .stop-row:hover { background: var(--color-background-secondary); }
+  .stop-row:last-child { border-bottom: none; }
+
+  .stop-num-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 14px 0;
+    position: relative;
+  }
+  .timeline-line {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 2px;
+    background: #D1D5DB;
+    top: 0;
+    bottom: 0;
+    z-index: 0;
+  }
+  .timeline-line.top-half { bottom: 50%; }
+  .timeline-line.bottom-half { top: 50%; }
+  .timeline-line.orange { background: #F97316; }
+  .stop-dot {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 500;
+    position: relative;
+    z-index: 1;
+    flex-shrink: 0;
+  }
+  .dot-origin {
+    background: #16A34A;
+    color: #fff;
+    width: 28px;
+    height: 28px;
+    box-shadow: 0 0 0 3px #DCFCE7;
+  }
+  .dot-dest {
+    background: #DC2626;
+    color: #fff;
+    width: 28px;
+    height: 28px;
+    box-shadow: 0 0 0 3px #FEE2E2;
+  }
+  .dot-mid {
+    background: var(--color-background-primary);
+    color: var(--color-text-secondary);
+    border: 1.5px solid #D1D5DB;
+    font-size: 10px;
+  }
+  .dot-mid.major {
+    border-color: #F97316;
+    color: #F97316;
+    background: #FFF7ED;
+  }
+
+  .station-col {
+    padding: 12px 12px 12px 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+  }
+  .station-code {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--color-text-primary);
+    letter-spacing: 0.3px;
+  }
+  .station-name {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    line-height: 1.3;
+  }
+  .halt-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-top: 2px;
+    width: fit-content;
+  }
+  .halt-origin-badge { background: #DCFCE7; color: #15803D; }
+  .halt-dest-badge { background: #FEE2E2; color: #991B1B; }
+  .halt-min-badge { background: #FFF4E5; color: #92400E; }
+  .halt-skip-badge { background: var(--color-background-secondary); color: var(--color-text-tertiary); }
+
+  .time-col {
+    padding: 12px 8px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+  }
+  .time-main {
+    font-size: 14px;
+    font-weight: 500;
+    font-family: var(--font-mono);
+    color: var(--color-text-primary);
+    letter-spacing: 0.3px;
+  }
+  .time-day {
+    font-size: 10px;
+    color: var(--color-text-tertiary);
+  }
+  .time-dash {
+    font-size: 18px;
+    color: var(--color-text-tertiary);
+    line-height: 1;
+  }
+
+  .day-col {
+    padding: 12px 4px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .day-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+  .day-1 { background: #EFF6FF; color: #1D4ED8; }
+  .day-2 { background: #F5F3FF; color: #5B21B6; }
+  .day-3 { background: #FDF4FF; color: #6B21A8; }
+
+  .dist-col {
+    padding: 12px 0 12px 8px;
+    text-align: right;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .dist-val {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+  }
+  .dist-unit {
+    font-size: 10px;
+    color: var(--color-text-tertiary);
+    margin-left: 2px;
+  }
+
+  .origin-row { background: #F0FDF4; }
+  .origin-row:hover { background: #DCFCE7; }
+  .dest-row { background: #FFF5F5; }
+  .dest-row:hover { background: #FEE2E2; }
+
+  .search-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    border-bottom: 0.5px solid var(--color-border-tertiary);
+  }
+  .search-bar input {
+    flex: 1;
+    font-size: 13px;
+    padding: 6px 10px;
+    border-radius: var(--border-radius-md);
+    border: 0.5px solid var(--color-border-secondary);
+    background: var(--color-background-secondary);
+    color: var(--color-text-primary);
+    outline: none;
+  }
+  .search-bar input:focus {
+    border-color: #F97316;
+    background: var(--color-background-primary);
+  }
+  .filter-btn {
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: var(--border-radius-md);
+    border: 0.5px solid var(--color-border-secondary);
+    background: var(--color-background-secondary);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .filter-btn.active {
+    background: #FFF4E5;
+    border-color: #FCD08A;
+    color: #B45309;
+  }
+
+  .no-results {
+    padding: 32px 20px;
+    text-align: center;
+    color: var(--color-text-tertiary);
+    font-size: 14px;
+  }
+
+  .progress-bar-wrap {
+    height: 3px;
+    background: var(--color-background-secondary);
+    position: relative;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(to right, #16A34A, #F97316, #DC2626);
+    width: 0%;
+    transition: width 0.4s ease;
+  }
+
+  .wrapper {
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    background: var(--color-background-primary);
+  }
+</style>
+
+<h2 class="sr-only">Train journey timeline for Rajdhani Express 12951 — 16 stops from Mumbai Central to New Delhi</h2>
+
+<div class="wrapper">
+  <div class="train-header">
+    <div class="train-number">12951 — Rajdhani Express</div>
+    <div class="train-name">Mumbai Central → New Delhi</div>
+    <div class="train-meta">
+      <span class="meta-chip chip-orange"><i class="ti ti-route" aria-hidden="true"></i> 1384 km</span>
+      <span class="meta-chip chip-blue"><i class="ti ti-clock" aria-hidden="true"></i> 15h 55m</span>
+      <span class="meta-chip chip-green"><i class="ti ti-map-pin" aria-hidden="true"></i> 16 Stops</span>
+      <span class="meta-chip chip-gray"><i class="ti ti-calendar" aria-hidden="true"></i> Daily</span>
+    </div>
+  </div>
+
+  <div class="progress-bar-wrap">
+    <div class="progress-bar-fill" id="progress-fill"></div>
+  </div>
+
+  <div class="search-bar">
+    <i class="ti ti-search" style="font-size:16px; color:var(--color-text-tertiary);" aria-hidden="true"></i>
+    <input type="text" id="station-search" placeholder="Search station…" oninput="filterStops()" aria-label="Search stations" />
+    <button class="filter-btn active" id="btn-all" onclick="setFilter('all')">All</button>
+    <button class="filter-btn" id="btn-major" onclick="setFilter('major')">Major</button>
+  </div>
+
+  <div class="col-headers">
+    <div></div>
+    <div>Station</div>
+    <div style="text-align:center">Arrival</div>
+    <div style="text-align:center">Departure</div>
+    <div style="text-align:center">Day</div>
+    <div style="text-align:right">Km</div>
+  </div>
+
+  <div class="stops-list" id="stops-list" role="list"></div>
+</div>
+
+<script>
+const stops = [
+  { code: "MMCT", name: "Mumbai Central", arr: null, dep: "17:00", day: 1, dist: 0, major: true, type: "origin" },
+  { code: "BRC",  name: "Vadodara Jn", arr: "20:40", dep: "20:50", day: 1, dist: 392, major: true, type: "mid" },
+  { code: "RTM",  name: "Ratlam Jn", arr: "23:10", dep: "23:15", day: 1, dist: 530, major: false, type: "mid" },
+  { code: "KTE",  name: "Kota Jn", arr: "01:45", dep: "01:50", day: 2, dist: 760, major: true, type: "mid" },
+  { code: "SWM",  name: "Sawai Madhopur", arr: "03:01", dep: "03:03", day: 2, dist: 853, major: false, type: "mid" },
+  { code: "BTE",  name: "Bharatpur", arr: "04:15", dep: "04:17", day: 2, dist: 947, major: false, type: "mid" },
+  { code: "MTJ",  name: "Mathura Jn", arr: "05:00", dep: "05:02", day: 2, dist: 1007, major: true, type: "mid" },
+  { code: "AGC",  name: "Agra Cantt", arr: "05:42", dep: "05:45", day: 2, dist: 1047, major: true, type: "mid" },
+  { code: "DHO",  name: "Dholpur", arr: "06:14", dep: "06:16", day: 2, dist: 1089, major: false, type: "mid" },
+  { code: "GWL",  name: "Gwalior", arr: "06:44", dep: "06:47", day: 2, dist: 1127, major: true, type: "mid" },
+  { code: "JHS",  name: "Jhansi Jn", arr: "07:30", dep: "07:35", day: 2, dist: 1183, major: true, type: "mid" },
+  { code: "LLN",  name: "Lalitpur", arr: "08:11", dep: "08:13", day: 2, dist: 1228, major: false, type: "mid" },
+  { code: "BPL",  name: "Bhopal Jn", arr: "09:55", dep: "10:00", day: 2, dist: 1295, major: true, type: "mid" },
+  { code: "ET",   name: "Itarsi Jn", arr: "10:51", dep: "10:54", day: 2, dist: 1349, major: false, type: "mid" },
+  { code: "HBJ",  name: "Habibganj", arr: "11:22", dep: "11:25", day: 2, dist: 1370, major: false, type: "mid" },
+  { code: "NDLS", name: "New Delhi", arr: "08:55", dep: null, day: 2, dist: 1384, major: true, type: "dest" },
+];
+
+function haltLabel(s) {
+  if (s.type === "origin") return { text: "Origin", cls: "halt-origin-badge" };
+  if (s.type === "dest")   return { text: "Destination", cls: "halt-dest-badge" };
+  if (!s.arr || !s.dep) return { text: "No halt", cls: "halt-skip-badge" };
+  const [ah, am] = s.arr.split(":").map(Number);
+  const [dh, dm] = s.dep.split(":").map(Number);
+  let diff = (dh * 60 + dm) - (ah * 60 + am);
+  if (diff < 0) diff += 24 * 60;
+  if (diff === 0) return { text: "No halt", cls: "halt-skip-badge" };
+  return { text: diff + " min halt", cls: "halt-min-badge" };
+}
+
+let currentFilter = "all";
+
+function setFilter(f) {
+  currentFilter = f;
+  document.getElementById("btn-all").className = "filter-btn" + (f === "all" ? " active" : "");
+  document.getElementById("btn-major").className = "filter-btn" + (f === "major" ? " active" : "");
+  renderStops();
+}
+
+function filterStops() { renderStops(); }
+
+function renderStops() {
+  const q = (document.getElementById("station-search").value || "").toLowerCase();
+  const filtered = stops.filter(s => {
+    const matchSearch = !q || s.code.toLowerCase().includes(q) || s.name.toLowerCase().includes(q);
+    const matchFilter = currentFilter === "all" || s.major || s.type === "origin" || s.type === "dest";
+    return matchSearch && matchFilter;
+  });
+
+  const list = document.getElementById("stops-list");
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="no-results"><i class="ti ti-search-off" style="font-size:24px;display:block;margin-bottom:8px;" aria-hidden="true"></i>No stations match your search</div>';
+    return;
+  }
+
+  list.innerHTML = filtered.map((s, i) => {
+    const isFirst = s.type === "origin";
+    const isLast = s.type === "dest";
+    const halt = haltLabel(s);
+    const rowCls = isFirst ? "stop-row origin-row" : isLast ? "stop-row dest-row" : "stop-row";
+
+    const dotCls = isFirst ? "stop-dot dot-origin" : isLast ? "stop-dot dot-dest" : (s.major ? "stop-dot dot-mid major" : "stop-dot dot-mid");
+    const dotContent = isFirst ? '<i class="ti ti-circle-dot" style="font-size:14px;" aria-hidden="true"></i>'
+                     : isLast  ? '<i class="ti ti-map-pin" style="font-size:13px;" aria-hidden="true"></i>'
+                     : (stops.indexOf(s) + 1);
+
+    const showTopLine = i > 0;
+    const showBotLine = i < filtered.length - 1;
+    const lineColor = (s.major || isFirst || isLast) ? "orange" : "";
+
+    const timeCell = (t, fallback) => t
+      ? `<div class="time-main">${t}</div>`
+      : `<div class="time-dash">–</div>`;
+
+    const dayBadge = `<span class="day-badge day-${s.day}">D${s.day}</span>`;
+
+    return `
+    <div class="${rowCls}" role="listitem">
+      <div class="stop-num-col">
+        ${showTopLine ? `<div class="timeline-line top-half ${lineColor}"></div>` : ""}
+        ${showBotLine ? `<div class="timeline-line bottom-half ${lineColor}"></div>` : ""}
+        <div class="${dotCls}" aria-label="Stop ${stops.indexOf(s) + 1}">${dotContent}</div>
+      </div>
+      <div class="station-col">
+        <div class="station-code">${s.code}</div>
+        <div class="station-name">${s.name}</div>
+        <div class="halt-badge ${halt.cls}">${halt.text}</div>
+      </div>
+      <div class="time-col">${timeCell(s.arr)}</div>
+      <div class="time-col">${timeCell(s.dep)}</div>
+      <div class="day-col">${dayBadge}</div>
+      <div class="dist-col">
+        <span class="dist-val">${s.dist}</span><span class="dist-unit">km</span>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+renderStops();
+
+setTimeout(() => {
+  document.getElementById("progress-fill").style.width = "38%";
+}, 200);
+</script>
