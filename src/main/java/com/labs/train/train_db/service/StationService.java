@@ -1,6 +1,9 @@
 package com.labs.train.train_db.service;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -57,24 +60,51 @@ public class StationService {
 
                 List<TrainSchedule> schedules = trainScheduleRepository
                                 .findByStation_StationCodeOrderByArrivalTime(stationCode);
-                // TODO: Improve station timetable ordering when journey day/service date is
-                // available.
 
-                List<StationTrainResponse> trains = schedules.stream()
+                List<StationTrainResponse> trains = buildStationTrains(schedules);
+
+                return new StationResponse(
+                                station.getStationCode(),
+                                station.getStationName(),
+                                trains.size(),
+                                trains);
+        }
+
+        /**
+         * Builds the list of trains serving a station without firing per-train
+         * queries (the earlier version did two queries per train to establish
+         * origin/destination). All schedules for the affected trains are loaded
+         * in a single query and grouped by train id, so a station with N trains
+         * costs O(1) round trips instead of O(2N).
+         */
+        private List<StationTrainResponse> buildStationTrains(List<TrainSchedule> stationSchedules) {
+
+                if (stationSchedules.isEmpty()) {
+                        return List.of();
+                }
+
+                List<Long> trainIds = stationSchedules.stream()
+                                .map(schedule -> schedule.getTrain().getId())
+                                .distinct()
+                                .toList();
+
+                Map<Long, List<TrainSchedule>> schedulesByTrain = trainScheduleRepository
+                                .findByTrain_IdInOrderByTrain_IdAscSequenceNoAsc(trainIds)
+                                .stream()
+                                .collect(Collectors.groupingBy(
+                                                schedule -> schedule.getTrain().getId()));
+
+                return stationSchedules.stream()
                                 .map(schedule -> {
 
-                                        TrainSchedule firstStop = trainScheduleRepository
-                                                        .findFirstByTrainOrderBySequenceNoAsc(schedule.getTrain())
-                                                        .orElseThrow();
+                                        List<TrainSchedule> stops = schedulesByTrain
+                                                        .get(schedule.getTrain().getId());
 
-                                        TrainSchedule lastStop = trainScheduleRepository
-                                                        .findFirstByTrainOrderBySequenceNoDesc(schedule.getTrain())
-                                                        .orElseThrow();
+                                        int firstSeq = stops.get(0).getSequenceNo();
+                                        int lastSeq = stops.get(stops.size() - 1).getSequenceNo();
 
-                                        boolean isOrigin = schedule.getSequenceNo().equals(firstStop.getSequenceNo());
-
-                                        boolean isDestination = schedule.getSequenceNo()
-                                                        .equals(lastStop.getSequenceNo());
+                                        boolean isOrigin = schedule.getSequenceNo().equals(firstSeq);
+                                        boolean isDestination = schedule.getSequenceNo().equals(lastSeq);
 
                                         return new StationTrainResponse(
                                                         schedule.getTrain().getTrainNumber(),
@@ -87,11 +117,5 @@ public class StationService {
                                                         isDestination);
                                 })
                                 .toList();
-
-                return new StationResponse(
-                                station.getStationCode(),
-                                station.getStationName(),
-                                trains.size(),
-                                trains);
         }
 }

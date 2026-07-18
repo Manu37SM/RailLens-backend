@@ -3,8 +3,11 @@ package com.labs.train.train_db.service;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
@@ -18,6 +21,9 @@ import com.labs.train.train_db.repository.TrainRepository;
 import com.labs.train.train_db.repository.TrainScheduleRepository;
 
 import com.labs.train.train_db.entity.*;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
 
 @Slf4j
 @Service
@@ -28,20 +34,17 @@ public class RailwayDataImportService {
     private final StationRepository stationRepository;
     private final TrainRepository trainRepository;
     private final TrainScheduleRepository trainScheduleRepository;
+    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("H:mm");
 
     public void importCsv() {
 
         Map<String, Station> stationCache = new HashMap<>();
         Map<String, Train> trainCache = new HashMap<>();
+        Set<String> processedTrains = new HashSet<>();
 
         try {
 
             log.info("Starting railway data import...");
-
-            if (trainScheduleRepository.count() > 0) {
-                System.out.println("Data already imported");
-                return;
-            }
 
             stationRepository.findAll()
                     .forEach(station -> stationCache.put(
@@ -58,43 +61,43 @@ public class RailwayDataImportService {
             BufferedReader reader = new BufferedReader(
                     new InputStreamReader(resource.getInputStream()));
 
-            // Skip header
-            reader.readLine();
-
-            String line;
+            CSVParser parser = CSVFormat.DEFAULT
+                    .builder()
+                    .setHeader(
+                            "Train No",
+                            "Train Name",
+                            "SEQ",
+                            "Station Code",
+                            "Station Name",
+                            "Arrival Time",
+                            "Departure Time",
+                            "Distance",
+                            "Source Station",
+                            "Source Station Name",
+                            "Destination Station",
+                            "Destination Station Name")
+                    .setSkipHeaderRecord(true)
+                    .get()
+                    .parse(reader);
 
             int count = 0;
 
-            while ((line = reader.readLine()) != null) {
+            for (CSVRecord record : parser) {
 
                 try {
-                    String[] cols = line.split(",", -1);
 
-                    if (cols.length < 8) {
-                        continue;
-                    }
+                    String trainNo = cleanText(record.get("Train No"));
+                    String trainName = cleanText(record.get("Train Name"));
 
-                    String trainNo = cols[0];
-                    String trainName = cols[1];
+                    Integer sequenceNo = Integer.parseInt(cleanText(record.get("SEQ")));
 
-                    if ("NA".equalsIgnoreCase(cols[5]) ||
-                            "NA".equalsIgnoreCase(cols[6]) ||
-                            "NA".equalsIgnoreCase(cols[7])) {
+                    String stationCode = cleanText(record.get("Station Code"));
+                    String stationName = cleanText(record.get("Station Name"));
 
-                        System.out.println("Skipping train: " + trainNo);
+                    LocalTime arrivalTime = parseTime(cleanText(record.get("Arrival Time")));
+                    LocalTime departureTime = parseTime(cleanText(record.get("Departure Time")));
 
-                        continue;
-                    }
-
-                    Integer sequenceNo = Integer.parseInt(cols[2]);
-
-                    String stationCode = cols[3];
-                    String stationName = cols[4];
-
-                    LocalTime arrivalTime = parseTime(cols[5]);
-                    LocalTime departureTime = parseTime(cols[6]);
-
-                    Integer distance = Integer.parseInt(cols[7]);
+                    Integer distance = parseInteger(cleanText(record.get("Distance")));
 
                     // Station
                     Station station = stationCache.get(stationCode);
@@ -102,13 +105,21 @@ public class RailwayDataImportService {
                     if (station == null) {
 
                         station = new Station();
-
                         station.setStationCode(stationCode);
                         station.setStationName(stationName);
 
                         station = stationRepository.save(station);
 
                         stationCache.put(stationCode, station);
+
+                    } else {
+
+                        // Keep station names up-to-date
+                        if (!stationName.equals(station.getStationName())) {
+                            station.setStationName(stationName);
+                            station = stationRepository.save(station);
+                            stationCache.put(stationCode, station);
+                        }
                     }
 
                     // Train
@@ -117,13 +128,25 @@ public class RailwayDataImportService {
                     if (train == null) {
 
                         train = new Train();
-
                         train.setTrainNumber(trainNo);
                         train.setTrainName(trainName);
 
                         train = trainRepository.save(train);
 
                         trainCache.put(trainNo, train);
+
+                    } else {
+
+                        if (!trainName.equals(train.getTrainName())) {
+                            train.setTrainName(trainName);
+                            train = trainRepository.save(train);
+                            trainCache.put(trainNo, train);
+                        }
+                    }
+
+                    // Delete schedule only for existing trains, only once
+                    if (processedTrains.add(trainNo)) {
+                        trainScheduleRepository.deleteByTrain(train);
                     }
 
                     // Schedule
@@ -142,19 +165,17 @@ public class RailwayDataImportService {
                     count++;
 
                     if (count % 10000 == 0) {
-                        System.out.println("Imported: " + count);
+                        log.info("Imported {} rows", count);
                     }
                 } catch (Exception ex) {
-
-                    System.out.println("Skipping row:");
-                    System.out.println(line);
+                    log.error("Failed to import row: {}", record.toString(), ex);
                 }
 
             }
 
             reader.close();
 
-            System.out.println("Imported rows: " + count);
+            log.info("Imported {} rows successfully", count);
 
         } catch (Exception e) {
 
@@ -164,17 +185,41 @@ public class RailwayDataImportService {
 
     private LocalTime parseTime(String value) {
 
-        if (value == null ||
-                value.isBlank() ||
-                value.equalsIgnoreCase("NA")) {
+        if (value == null || value.isBlank() || value.equalsIgnoreCase("NA")) {
             return null;
         }
 
         try {
-            return LocalTime.parse(value);
+            return LocalTime.parse(value, TIME_FORMATTER);
         } catch (Exception e) {
-            System.out.println("Invalid time: " + value);
+            log.warn("Invalid time: {}", value);
             return null;
         }
+    }
+
+    private Integer parseInteger(String value) {
+        if (value == null || value.isBlank() || value.equalsIgnoreCase("NA")) {
+            return null;
+        }
+        return Integer.parseInt(value);
+    }
+
+    private String cleanText(String value) {
+
+        if (value == null) {
+            return null;
+        }
+
+        value = value.trim();
+
+        if (value.startsWith("\"") && value.endsWith("\"")) {
+            value = value.substring(1, value.length() - 1);
+        }
+
+        while (value.endsWith(",")) {
+            value = value.substring(0, value.length() - 1).trim();
+        }
+
+        return value;
     }
 }

@@ -5,6 +5,7 @@ import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.labs.train.train_db.entity.Train;
 import com.labs.train.train_db.entity.TrainSchedule;
@@ -24,5 +25,10 @@ public interface TrainScheduleRepository
     List<TrainSchedule> findByStation_StationCode(String stationCode);
 
     List<TrainSchedule> findByStation_StationCodeOrderBySequenceNo(String stationCode);
+
+    List<TrainSchedule> findByTrain_IdInOrderByTrain_IdAscSequenceNoAsc(List<Long> trainIds);
+
+    @Transactional
+    void deleteByTrain(Train train);
 
 }
