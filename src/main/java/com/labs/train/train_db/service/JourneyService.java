@@ -93,7 +93,13 @@ public class JourneyService {
                                 .collect(Collectors.groupingBy(
                                                 schedule -> schedule.getTrain().getId()));
 
-                List<JourneyTrainResponse> journeys = new ArrayList<>();
+                // Paired with its duration in minutes purely for sorting below -
+                // JourneyTrainResponse itself only carries the formatted string,
+                // since that's all the frontend has ever needed to display.
+                record ScoredJourney(JourneyTrainResponse response, long durationMinutes) {
+                }
+
+                List<ScoredJourney> scored = new ArrayList<>();
 
                 for (TrainSchedule source : matchedSources) {
 
@@ -103,15 +109,27 @@ public class JourneyService {
 
                         List<TrainSchedule> route = routesByTrainId.get(source.getTrain().getId());
 
-                        journeys.add(
+                        long durationMinutes = calculateDurationMinutes(route, source, destination);
+
+                        scored.add(new ScoredJourney(
                                         new JourneyTrainResponse(
                                                         source.getTrain().getTrainNumber(),
                                                         source.getTrain().getTrainName(),
                                                         source.getDepartureTime(),
                                                         destination.getArrivalTime(),
-                                                        calculateDuration(route, source, destination),
-                                                        distance));
+                                                        formatDuration(durationMinutes),
+                                                        distance),
+                                        durationMinutes));
                 }
+
+                // Fastest first. Journeys with an unknown duration (missing
+                // arrival/departure time in the source data) sort last rather
+                // than first or being silently dropped - calculateDurationMinutes
+                // returns Long.MAX_VALUE for those, see its javadoc.
+                List<JourneyTrainResponse> journeys = scored.stream()
+                                .sorted(java.util.Comparator.comparingLong(ScoredJourney::durationMinutes))
+                                .map(ScoredJourney::response)
+                                .toList();
 
                 return new JourneySearchResponse(
                                 from,
@@ -120,13 +138,18 @@ public class JourneyService {
                                 journeys);
         }
 
-        private String calculateDuration(
+        /**
+         * Returns {@code Long.MAX_VALUE} (not -1 or null) for an unknown
+         * duration specifically so a plain ascending sort naturally pushes
+         * these to the end without every caller needing a null-check.
+         */
+        private long calculateDurationMinutes(
                         List<TrainSchedule> route,
                         TrainSchedule source,
                         TrainSchedule destination) {
 
                 if (source.getDepartureTime() == null || destination.getArrivalTime() == null) {
-                        return "";
+                        return Long.MAX_VALUE;
                 }
 
                 List<Integer> journeyDays = journeyDayCalculator.computeJourneyDays(route);
@@ -147,9 +170,16 @@ public class JourneyService {
                         }
                 }
 
-                long minutes = journeyDayCalculator.minutesBetween(
+                return journeyDayCalculator.minutesBetween(
                                 sourceDay, source.getDepartureTime(),
                                 destinationDay, destination.getArrivalTime());
+        }
+
+        private String formatDuration(long minutes) {
+
+                if (minutes == Long.MAX_VALUE) {
+                        return "";
+                }
 
                 long hours = minutes / 60;
                 long remainingMinutes = minutes % 60;

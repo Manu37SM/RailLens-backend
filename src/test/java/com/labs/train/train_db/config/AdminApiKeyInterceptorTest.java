@@ -19,7 +19,7 @@ import jakarta.servlet.http.HttpServletResponse;
 
 /**
  * Plain unit tests for the fail-closed admin API key gate added while
- * locking down POST /api/admin/import (see the class-level javadoc on
+ * locking down POST /api/v1/admin/import (see the class-level javadoc on
  * AdminApiKeyInterceptor for why this exists). Configures the @Value-backed
  * key field via reflection rather than a Spring context, since the
  * interceptor has no other dependencies worth spinning one up for.

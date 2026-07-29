@@ -14,7 +14,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping("/api/schedules")
+@RequestMapping("/api/v1/schedules")
 @RequiredArgsConstructor
 @Validated
 public class ScheduleController {

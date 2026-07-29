@@ -247,6 +247,8 @@ public class RailwayDataImportService {
 
         clearCache(CacheConfig.TRAIN_DETAILS_CACHE);
         clearCache(CacheConfig.STATION_DETAILS_CACHE);
+        clearCache(CacheConfig.STATS_CACHE);
+        clearCache(CacheConfig.SEARCH_INDEX_CACHE);
     }
 
     private void clearCache(String cacheName) {

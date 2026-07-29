@@ -3,7 +3,7 @@ package com.labs.train.train_db.config;
 import org.springframework.stereotype.Component;
 
 /**
- * Stricter limiter applied only to /api/auth/** (register/login/me), on top
+ * Stricter limiter applied only to /api/v1/auth/** (register/login/me), on top
  * of - not instead of - the general {@link RateLimitInterceptor}. Login and
  * register are the two routes where a generous 120/min limit is actually
  * dangerous: it would let an attacker try 120 password guesses a minute

@@ -14,20 +14,22 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Gates every {@code /api/admin/**} route behind a shared-secret header.
+ * Gates every {@code /api/v1/admin/**} route behind a shared-secret header.
  *
  * There is currently no Spring Security dependency anywhere in this
  * project, which means the bulk CSV import endpoint - the one route that
  * deletes and rewrites train schedule data - was completely open to anyone
  * who could reach the API. This interceptor is a deliberately minimal,
  * fail-closed stopgap for that specific route, not a replacement for real
- * authentication. Whether the write endpoints on /api/trains, /api/stations
- * and /api/schedules also need auth (and what scheme: session, JWT, API
+ * authentication. Whether the write endpoints on /api/v1/trains,
+ * /api/v1/stations and /api/v1/schedules also need auth (and what scheme: session, JWT, API
  * key per-client for the future mobile apps) is a bigger decision that
  * needs the user's input before implementing - see the enhancement summary.
+ * (Public API versioning under /api/v1/** happened first - see
+ * project memory - but that's orthogonal to this decision.)
  *
  * Fails closed: if {@code raillens.admin.api-key} isn't configured, every
- * request to /api/admin/** is rejected rather than silently left open.
+ * request to /api/v1/admin/** is rejected rather than silently left open.
  */
 @Slf4j
 @Component

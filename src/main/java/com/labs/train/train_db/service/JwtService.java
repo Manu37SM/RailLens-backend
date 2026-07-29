@@ -1,7 +1,8 @@
 package com.labs.train.train_db.service;
 
-import java.security.Key;
 import java.util.Date;
+
+import javax.crypto.SecretKey;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -37,7 +38,7 @@ public class JwtService {
         @Value("${raillens.jwt.expiration-minutes:60}")
         private long expirationMinutes;
 
-        private Key signingKey;
+        private SecretKey signingKey;
 
         @PostConstruct
         void init() {
@@ -90,7 +91,7 @@ public class JwtService {
         public String validateAndGetUsername(String token) {
                 try {
                         Claims claims = Jwts.parser()
-                                        .verifyWith((javax.crypto.SecretKey) signingKey)
+                                        .verifyWith(signingKey)
                                         .build()
                                         .parseSignedClaims(token)
                                         .getPayload();

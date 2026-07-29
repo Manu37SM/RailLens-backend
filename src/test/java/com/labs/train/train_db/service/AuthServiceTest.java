@@ -20,6 +20,7 @@ import com.labs.train.train_db.entity.User;
 import com.labs.train.train_db.exception.DuplicateUserException;
 import com.labs.train.train_db.exception.InvalidCredentialsException;
 import com.labs.train.train_db.model.AuthResponse;
+import com.labs.train.train_db.model.ChangePasswordRequest;
 import com.labs.train.train_db.model.CurrentUserResponse;
 import com.labs.train.train_db.model.LoginRequest;
 import com.labs.train.train_db.model.RegisterRequest;
@@ -36,6 +37,9 @@ class AuthServiceTest {
 
         @Mock
         private JwtService jwtService;
+
+        @Mock
+        private RefreshTokenService refreshTokenService;
 
         @InjectMocks
         private AuthService authService;
@@ -73,6 +77,7 @@ class AuthServiceTest {
                 when(passwordEncoder.encode("password1")).thenReturn("hashed-value");
                 when(jwtService.generateToken("manish")).thenReturn("signed-jwt");
                 when(jwtService.getExpirationSeconds()).thenReturn(3600L);
+                when(refreshTokenService.issue(any())).thenReturn("refresh-token-value");
 
                 AuthResponse response = authService.register(request);
 
@@ -121,6 +126,7 @@ class AuthServiceTest {
                 when(passwordEncoder.matches("password1", "hashed-value")).thenReturn(true);
                 when(jwtService.generateToken("manish")).thenReturn("signed-jwt");
                 when(jwtService.getExpirationSeconds()).thenReturn(3600L);
+                when(refreshTokenService.issue(any())).thenReturn("refresh-token-value");
 
                 AuthResponse response = authService.login(request);
 
@@ -140,5 +146,56 @@ class AuthServiceTest {
 
                 assertThat(response.username()).isEqualTo("manish");
                 assertThat(response.email()).isEqualTo("manish@example.com");
+        }
+
+        @Test
+        void refreshDelegatesToRefreshTokenServiceAndReturnsANewAccessToken() {
+                User user = new User();
+                user.setUsername("manish");
+                user.setEmail("manish@example.com");
+
+                when(refreshTokenService.rotate("old-refresh-token"))
+                                .thenReturn(new RefreshTokenService.RotatedToken(user, "new-refresh-token"));
+                when(jwtService.generateToken("manish")).thenReturn("new-access-token");
+                when(jwtService.getExpirationSeconds()).thenReturn(3600L);
+
+                AuthResponse response = authService.refresh("old-refresh-token");
+
+                assertThat(response.token()).isEqualTo("new-access-token");
+                assertThat(response.refreshToken()).isEqualTo("new-refresh-token");
+                assertThat(response.username()).isEqualTo("manish");
+        }
+
+        @Test
+        void refreshPropagatesInvalidCredentialsExceptionForABadRefreshToken() {
+                when(refreshTokenService.rotate("bad-token"))
+                                .thenThrow(new InvalidCredentialsException("Invalid or expired refresh token"));
+
+                assertThatThrownBy(() -> authService.refresh("bad-token"))
+                                .isInstanceOf(InvalidCredentialsException.class);
+        }
+
+        @Test
+        void logoutDelegatesToRefreshTokenServiceRevoke() {
+                authService.logout("some-refresh-token");
+
+                verify(refreshTokenService).revoke("some-refresh-token");
+        }
+
+        @Test
+        void changePasswordRevokesEveryOutstandingRefreshTokenForTheUser() {
+                User user = new User();
+                user.setUsername("manish");
+                user.setPasswordHash("old-hash");
+
+                ChangePasswordRequest request = new ChangePasswordRequest("old-password", "newPassword1");
+                when(userRepository.findByUsername("manish")).thenReturn(Optional.of(user));
+                when(passwordEncoder.matches("old-password", "old-hash")).thenReturn(true);
+                when(passwordEncoder.encode("newPassword1")).thenReturn("new-hash");
+
+                authService.changePassword("manish", request);
+
+                assertThat(user.getPasswordHash()).isEqualTo("new-hash");
+                verify(refreshTokenService).revokeAllForUser(user);
         }
 }

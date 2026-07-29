@@ -12,7 +12,7 @@ import com.labs.train.train_db.service.RailwayDataImportService;
 import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping("/api/admin")
+@RequestMapping("/api/v1/admin")
 @RequiredArgsConstructor
 public class RailwayDataImportController {
 

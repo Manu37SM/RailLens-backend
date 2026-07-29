@@ -1,6 +1,8 @@
 package com.labs.train.train_db.service;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -12,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.labs.train.train_db.common.AppConstants;
+import com.labs.train.train_db.common.FuzzyMatch;
 import com.labs.train.train_db.config.CacheConfig;
 import com.labs.train.train_db.entity.Station;
 import com.labs.train.train_db.entity.TrainSchedule;
@@ -83,12 +86,58 @@ public class StationService {
 
                 Pageable pageable = PageRequest.of(0, AppConstants.SEARCH_PAGE_SIZE);
 
-                return stationRepository.search(query, pageable)
+                List<StationSearchResponse> result = stationRepository.search(query, pageable)
                                 .stream()
                                 .map(station -> new StationSearchResponse(
                                                 station.getStationCode(),
                                                 station.getStationName()))
                                 .toList();
+
+                if (result.isEmpty()) {
+                        result = fuzzySearch(query);
+                        log.info("No exact matches for '{}', found {} fuzzy matches", query, result.size());
+                }
+
+                return result;
+        }
+
+        /**
+         * Typo-tolerant fallback for when the primary LIKE search (above)
+         * finds nothing. See TrainService#fuzzySearch / FuzzyMatch's javadoc
+         * for the full reasoning - same pattern, applied to stations.
+         */
+        private List<StationSearchResponse> fuzzySearch(String query) {
+
+                String queryLower = query.toLowerCase(Locale.ROOT);
+                int maxDistance = FuzzyMatch.maxDistanceFor(queryLower.length());
+
+                return fuzzySearchIndex().stream()
+                                .map(station -> Map.entry(station, fuzzyScore(station, queryLower)))
+                                .filter(entry -> entry.getValue() <= maxDistance)
+                                .sorted(Comparator.comparingInt(Map.Entry::getValue))
+                                .limit(AppConstants.SEARCH_PAGE_SIZE)
+                                .map(Map.Entry::getKey)
+                                .toList();
+        }
+
+        private int fuzzyScore(StationSearchResponse station, String queryLower) {
+
+                int best = FuzzyMatch.distance(station.stationCode().toLowerCase(Locale.ROOT), queryLower);
+
+                for (String word : station.stationName().toLowerCase(Locale.ROOT).split("\\s+")) {
+                        best = Math.min(best, FuzzyMatch.distance(word, queryLower));
+                }
+
+                return best;
+        }
+
+        /**
+         * Every station's code+name, cached (SEARCH_INDEX_CACHE) - see
+         * CacheConfig. Candidate list #fuzzySearch scores against.
+         */
+        @Cacheable(cacheNames = CacheConfig.SEARCH_INDEX_CACHE, key = "'stations'")
+        public List<StationSearchResponse> fuzzySearchIndex() {
+                return stationRepository.findAllSearchKeys();
         }
 
         /**

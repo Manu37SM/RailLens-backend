@@ -2,7 +2,10 @@ package com.labs.train.train_db.service;
 
 import java.time.Duration;
 import java.time.LocalTime;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
@@ -11,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.labs.train.train_db.common.AppConstants;
+import com.labs.train.train_db.common.FuzzyMatch;
 import com.labs.train.train_db.config.CacheConfig;
 import com.labs.train.train_db.entity.Train;
 import com.labs.train.train_db.entity.TrainSchedule;
@@ -96,9 +100,57 @@ public class TrainService {
                                                 train.getTrainName()))
                                 .toList();
 
-                log.info("Found {} trains", result.size());
+                if (result.isEmpty()) {
+                        result = fuzzySearch(query);
+                        log.info("No exact matches for '{}', found {} fuzzy matches", query, result.size());
+                } else {
+                        log.info("Found {} trains", result.size());
+                }
 
                 return result;
+        }
+
+        /**
+         * Typo-tolerant fallback for when the primary LIKE search (above)
+         * finds nothing - e.g. "Rajdani" instead of "Rajdhani". Only reached
+         * on that zero-result path, never on the common case, so the cost of
+         * scanning the cached full-table index (see #fuzzySearchIndex) is
+         * paid rarely. See FuzzyMatch's javadoc for why this is a plain-Java
+         * Levenshtein distance rather than a Postgres trigram extension.
+         */
+        private List<TrainSearchResponse> fuzzySearch(String query) {
+
+                String queryLower = query.toLowerCase(Locale.ROOT);
+                int maxDistance = FuzzyMatch.maxDistanceFor(queryLower.length());
+
+                return fuzzySearchIndex().stream()
+                                .map(train -> Map.entry(train, fuzzyScore(train, queryLower)))
+                                .filter(entry -> entry.getValue() <= maxDistance)
+                                .sorted(Comparator.comparingInt(Map.Entry::getValue))
+                                .limit(AppConstants.SEARCH_PAGE_SIZE)
+                                .map(Map.Entry::getKey)
+                                .toList();
+        }
+
+        private int fuzzyScore(TrainSearchResponse train, String queryLower) {
+
+                int best = FuzzyMatch.distance(train.trainNumber().toLowerCase(Locale.ROOT), queryLower);
+
+                for (String word : train.trainName().toLowerCase(Locale.ROOT).split("\\s+")) {
+                        best = Math.min(best, FuzzyMatch.distance(word, queryLower));
+                }
+
+                return best;
+        }
+
+        /**
+         * Every train's number+name, cached (SEARCH_INDEX_CACHE) - see that
+         * cache's javadoc in CacheConfig for why. This is the candidate list
+         * #fuzzySearch scores against.
+         */
+        @Cacheable(cacheNames = CacheConfig.SEARCH_INDEX_CACHE, key = "'trains'")
+        public List<TrainSearchResponse> fuzzySearchIndex() {
+                return trainRepository.findAllSearchKeys();
         }
 
         /**

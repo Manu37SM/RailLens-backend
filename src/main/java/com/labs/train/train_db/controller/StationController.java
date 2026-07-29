@@ -25,7 +25,7 @@ import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping("/api/stations")
+@RequestMapping("/api/v1/stations")
 @RequiredArgsConstructor
 @Validated
 public class StationController {

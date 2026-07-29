@@ -1,0 +1,14 @@
+target/
+*.class
+.idea/
+*.iml
+.vscode/
+
+# Local dev secrets - never bake these into an image. Real config comes
+# from environment variables set on the hosting platform (see render.yaml
+# and application.properties.example).
+application.properties
+src/main/resources/application.properties
+
+.git/
+*.md

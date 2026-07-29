@@ -1,0 +1,53 @@
+# Render Blueprint - lets Render provision the backend web service and its
+# Postgres database from this one file (Render docs: "Infrastructure as
+# Code"). Deploying still requires the account owner to connect this repo
+# in the Render dashboard and click "Apply" - that step, and any values
+# marked sync: false below, can't be done from here since they need
+# dashboard/account access this session doesn't have.
+#
+# What this does NOT do: it doesn't touch the frontend (train-db-frontend
+# is a separate repo, meant for Vercel - see its README/.env.example) and
+# it doesn't run any Flyway/Liquibase migration (this project has none yet;
+# spring.jpa.hibernate.ddl-auto=update runs against the fresh Render DB on
+# first boot the same way it does locally).
+services:
+  - type: web
+    name: raillens-train-db
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /actuator/health
+    envVars:
+      # Render injects PORT automatically; the Dockerfile's ENTRYPOINT
+      # already reads it.
+      - key: SPRING_DATASOURCE_URL
+        fromDatabase:
+          name: raillens-db
+          property: connectionString
+      - key: SPRING_DATASOURCE_USERNAME
+        fromDatabase:
+          name: raillens-db
+          property: user
+      - key: SPRING_DATASOURCE_PASSWORD
+        fromDatabase:
+          name: raillens-db
+          property: password
+      # Secrets - generateValue makes Render create a random value on
+      # first deploy so nothing sensitive has to be typed into this file.
+      # raillens.jwt.secret specifically needs >= 32 bytes (see JwtService)
+      # - Render's generated value satisfies that.
+      - key: RAILLENS_JWT_SECRET
+        generateValue: true
+      - key: RAILLENS_ADMIN_API_KEY
+        generateValue: true
+      # Set this to the deployed Vercel frontend's actual origin once it
+      # exists (e.g. https://raillens.vercel.app) - CORS silently rejects
+      # every request from any other origin until this is set correctly.
+      - key: RAILLENS_CORS_ALLOWED_ORIGINS
+        sync: false
+
+databases:
+  - name: raillens-db
+    plan: free
+    databaseName: traindb
+    user: raillens

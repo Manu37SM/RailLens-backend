@@ -3,11 +3,15 @@ package com.labs.train.train_db.repository;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.labs.train.train_db.entity.Train;
 import com.labs.train.train_db.entity.TrainSchedule;
+import com.labs.train.train_db.model.RouteDistanceProjection;
+import com.labs.train.train_db.model.StationTrafficProjection;
 
 public interface TrainScheduleRepository
         extends JpaRepository<TrainSchedule, Long> {
@@ -26,7 +30,56 @@ public interface TrainScheduleRepository
 
     List<TrainSchedule> findByTrain_IdInOrderByTrain_IdAscSequenceNoAsc(List<Long> trainIds);
 
+    /**
+     * Every schedule row, grouped-ready (ordered by train then sequence).
+     * Used only by StatsService's fastest/slowest-trains computation - see
+     * TrainSpeedProjection's javadoc for why that can't be a simple JPQL
+     * aggregation like the other stats queries in this file. Result is
+     * cached at the StatsService layer (STATS_CACHE), so this full-table
+     * scan only runs on a cache miss, not per-request.
+     */
+    List<TrainSchedule> findAllByOrderByTrain_IdAscSequenceNoAsc();
+
     @Transactional
     void deleteByTrain(Train train);
+
+    /**
+     * A train's total route distance is the MAX(distance) among its own
+     * schedule rows (distance is cumulative from origin - see
+     * TrainService#getTrainDetails). Aggregated in the database rather
+     * than loading every schedule row into Java, both for the P0
+     * "efficient SQL" goal and because this specific query backs a public,
+     * unauthenticated endpoint (GET /api/stats) that has to stay cheap
+     * under repeated hits from RateLimitInterceptor's 120/min ceiling.
+     */
+    @Query("""
+            SELECT new com.labs.train.train_db.model.RouteDistanceProjection(
+                ts.train.trainNumber, ts.train.trainName, MAX(ts.distance))
+            FROM TrainSchedule ts
+            WHERE ts.distance IS NOT NULL
+            GROUP BY ts.train.trainNumber, ts.train.trainName
+            ORDER BY MAX(ts.distance) DESC
+            """)
+    List<RouteDistanceProjection> findRouteDistancesDescending(Pageable pageable);
+
+    @Query("""
+            SELECT new com.labs.train.train_db.model.RouteDistanceProjection(
+                ts.train.trainNumber, ts.train.trainName, MAX(ts.distance))
+            FROM TrainSchedule ts
+            WHERE ts.distance IS NOT NULL
+            GROUP BY ts.train.trainNumber, ts.train.trainName
+            HAVING MAX(ts.distance) > 0
+            ORDER BY MAX(ts.distance) ASC
+            """)
+    List<RouteDistanceProjection> findRouteDistancesAscending(Pageable pageable);
+
+    @Query("""
+            SELECT new com.labs.train.train_db.model.StationTrafficProjection(
+                ts.station.stationCode, ts.station.stationName, COUNT(ts))
+            FROM TrainSchedule ts
+            GROUP BY ts.station.stationCode, ts.station.stationName
+            ORDER BY COUNT(ts) DESC
+            """)
+    List<StationTrafficProjection> findBusiestStations(Pageable pageable);
 
 }

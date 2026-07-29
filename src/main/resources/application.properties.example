@@ -7,9 +7,33 @@ spring.jpa.hibernate.ddl-auto=update
 spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.format_sql=true
 
-# Shared secret required in the X-Admin-Key header for every /api/admin/**
+# Gzips response bodies over min-response-size for the listed MIME types -
+# JSON API responses in particular compress well (repetitive field names,
+# lots of whitespace-free but still text-like structure). Off by default
+# in Spring Boot; there's no reason not to turn it on for a JSON API like
+# this one, and it directly reduces bandwidth/latency for every client,
+# including the future mobile apps on slower connections.
+server.compression.enabled=true
+server.compression.mime-types=application/json,application/xml,text/html,text/css,application/javascript,text/plain
+server.compression.min-response-size=1024
+
+# Explicit HikariCP bounds rather than relying entirely on Spring Boot's
+# defaults (which pick a pool size from available CPU cores - fine for a
+# quick start, not something to leave implicit for a production
+# deployment where the actual concurrency ceiling should be a conscious
+# choice tied to the database's own max_connections). These are
+# conservative, cost-conscious defaults matching the project's
+# single-instance/indie-developer deployment target (see project memory) -
+# raise maximum-pool-size only alongside actually scaling the database.
+spring.datasource.hikari.maximum-pool-size=10
+spring.datasource.hikari.minimum-idle=2
+spring.datasource.hikari.connection-timeout=30000
+spring.datasource.hikari.idle-timeout=600000
+spring.datasource.hikari.max-lifetime=1800000
+
+# Shared secret required in the X-Admin-Key header for every /api/v1/admin/**
 # request (currently just the bulk CSV import). There is no other
-# authentication in this project yet - if this is left blank, /api/admin/**
+# authentication in this project yet - if this is left blank, /api/v1/admin/**
 # rejects all requests rather than being silently open. Set this to a long
 # random value and keep it out of version control.
 raillens.admin.api-key=<ADMIN_API_KEY>
@@ -28,5 +52,28 @@ raillens.cors.allowed-origins=http://localhost:3000
 # token immediately (all users are logged out).
 raillens.jwt.secret=<JWT_SECRET_AT_LEAST_32_BYTES>
 
-# How long an issued JWT stays valid. Defaults to 60 minutes if unset.
+# How long an issued access JWT stays valid. Defaults to 60 minutes if unset.
 raillens.jwt.expiration-minutes=60
+
+# How long an issued refresh token stays valid (see RefreshTokenService).
+# Defaults to 30 days if unset. Exchanging one at POST /api/auth/refresh
+# rotates it - the old one is revoked and a new one issued - so a single
+# refresh token is single-use, not a 30-day skeleton key.
+raillens.jwt.refresh-expiration-days=30
+
+# Health check for deployment platforms (Render, Docker, load balancers,
+# etc.) - GET /actuator/health returns {"status":"UP"} once the app and its
+# database connection are ready, and isn't behind RateLimitInterceptor or
+# AdminApiKeyInterceptor (both only match /api/**), so orchestrators can
+# poll it freely. show-details stays "never" publicly - only a bare status,
+# no internals - since this endpoint has no auth in front of it.
+management.endpoints.web.exposure.include=health,info
+management.endpoint.health.show-details=never
+management.endpoint.health.probes.enabled=true
+
+# Includes the per-request correlation ID (see RequestIdFilter) in every log
+# line so a single request's log lines can be grep'd out of the console/log
+# file, and echoes it back to callers via the X-Request-Id response header.
+# Empty brackets ("[]") show up on lines logged before/outside the filter
+# (startup, scheduled jobs, etc.) - that's expected, not a bug.
+logging.pattern.console=%d{yyyy-MM-dd HH:mm:ss} %-5level [%X{requestId}] %logger{36} - %msg%n

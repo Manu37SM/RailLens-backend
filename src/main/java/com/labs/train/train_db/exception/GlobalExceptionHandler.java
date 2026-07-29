@@ -7,9 +7,12 @@ import java.util.stream.Collectors;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import com.labs.train.train_db.model.ApiErrorResponse;
 
@@ -133,7 +136,7 @@ public class GlobalExceptionHandler {
 
         /**
          * Thrown when a {@code @Valid}-annotated {@code @RequestBody} fails
-         * Bean Validation (e.g. a blank trainNumber on POST /api/trains).
+         * Bean Validation (e.g. a blank trainNumber on POST /api/v1/trains).
          * Field-level messages are joined into one readable string so the
          * response stays consistent with every other handler here.
          */
@@ -153,6 +156,70 @@ public class GlobalExceptionHandler {
                                 LocalDateTime.now(),
                                 HttpStatus.BAD_REQUEST.value(),
                                 message);
+
+                return ResponseEntity.badRequest().body(response);
+        }
+
+        /**
+         * Thrown when a required {@code @RequestParam} (e.g. {@code from}/
+         * {@code to} on GET /api/v1/journeys, {@code q} on the search endpoints)
+         * is missing entirely from the request. Without this handler it fell
+         * through to the generic 500 handler below - a client-side mistake
+         * (forgot a query param) was being reported as a server failure,
+         * which is exactly backwards and would be actively misleading for a
+         * future mobile client trying to distinguish "my request was bad"
+         * from "the server broke."
+         */
+        @ExceptionHandler(MissingServletRequestParameterException.class)
+        public ResponseEntity<ApiErrorResponse> handleMissingRequestParameter(
+                        MissingServletRequestParameterException ex) {
+
+                ApiErrorResponse response = new ApiErrorResponse(
+                                LocalDateTime.now(),
+                                HttpStatus.BAD_REQUEST.value(),
+                                "Required parameter '" + ex.getParameterName() + "' is missing");
+
+                return ResponseEntity.badRequest().body(response);
+        }
+
+        /**
+         * Thrown when a {@code @RequestBody} can't be parsed as JSON at all
+         * (malformed body, wrong content-type, empty body where one was
+         * required) - distinct from {@link MethodArgumentNotValidException},
+         * which only fires once the body has already been successfully
+         * deserialized into a DTO. Without this handler a client sending
+         * broken JSON to e.g. POST /api/v1/auth/register got a generic 500
+         * instead of a 400 pointing at their own mistake.
+         */
+        @ExceptionHandler(HttpMessageNotReadableException.class)
+        public ResponseEntity<ApiErrorResponse> handleUnreadableBody(
+                        HttpMessageNotReadableException ex) {
+
+                ApiErrorResponse response = new ApiErrorResponse(
+                                LocalDateTime.now(),
+                                HttpStatus.BAD_REQUEST.value(),
+                                "Request body is missing or not valid JSON");
+
+                return ResponseEntity.badRequest().body(response);
+        }
+
+        /**
+         * Thrown when a {@code @PathVariable}/{@code @RequestParam} can't be
+         * converted to the type the handler method expects (e.g. a
+         * non-numeric value where a path builds a {@code Long}). No current
+         * endpoint has a numeric path variable, but this is cheap, general
+         * hardening against a 500 the moment one is added - the same
+         * "client's fault, not the server's" reasoning as the missing-param
+         * and unreadable-body handlers above.
+         */
+        @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+        public ResponseEntity<ApiErrorResponse> handleTypeMismatch(
+                        MethodArgumentTypeMismatchException ex) {
+
+                ApiErrorResponse response = new ApiErrorResponse(
+                                LocalDateTime.now(),
+                                HttpStatus.BAD_REQUEST.value(),
+                                "Parameter '" + ex.getName() + "' has an invalid value");
 
                 return ResponseEntity.badRequest().body(response);
         }

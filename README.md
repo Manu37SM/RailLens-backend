@@ -82,31 +82,31 @@ http://localhost:8080
 ### Train Search
 
 ```
-GET /api/trains/search?q={query}
+GET /api/v1/trains/search?q={query}
 ```
 
 ### Train Details
 
 ```
-GET /api/trains/{trainNumber}
+GET /api/v1/trains/{trainNumber}
 ```
 
 ### Station Search
 
 ```
-GET /api/stations/search?q={query}
+GET /api/v1/stations/search?q={query}
 ```
 
 ### Station Details
 
 ```
-GET /api/stations/{stationCode}
+GET /api/v1/stations/{stationCode}
 ```
 
 ### Trains Between Stations
 
 ```
-GET /api/journeys?from=LTT&to=PPTA
+GET /api/v1/journeys?from=LTT&to=PPTA
 ```
 
 Returns:

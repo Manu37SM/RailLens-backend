@@ -122,6 +122,22 @@
 			<scope>runtime</scope>
 		</dependency>
 
+		<!--
+			API documentation (Swagger UI at /swagger-ui.html, raw spec at
+			/v3/api-docs), generated from the existing controllers/DTOs rather
+			than hand-maintained - see PROMPT.md's Backend Principles ("Design
+			APIs suitable for... future third-party developers") and CHECKLIST
+			Phase 7/8. v3.0.x is the first line of springdoc-openapi with
+			official Spring Boot 4 / Spring Framework 7 support (verified via
+			web search, not assumed, after getting burned once already this
+			project by a Boot-4-incompatible assumption around Jackson).
+		-->
+		<dependency>
+			<groupId>org.springdoc</groupId>
+			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+			<version>3.0.3</version>
+		</dependency>
+
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>

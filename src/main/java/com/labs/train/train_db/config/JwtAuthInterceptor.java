@@ -16,9 +16,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Gates any route registered against it (currently just {@code
- * GET /api/auth/me}) behind a valid {@code Authorization: Bearer <jwt>}
- * header. On success, stashes the resolved username as a request attribute
+ * Gates any route registered against it (currently {@code /api/v1/auth/**}
+ * minus register/login - see WebConfig) behind a valid {@code
+ * Authorization: Bearer <jwt>} header. On success, stashes the resolved
+ * username as a request attribute
  * so the controller doesn't need to touch {@link JwtService} directly -
  * same separation of concerns as {@code AdminApiKeyInterceptor} keeping key
  * validation out of the controller layer.
