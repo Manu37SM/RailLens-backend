@@ -6,3 +6,27 @@ spring.datasource.password=<DB_PASSWORD>
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.format_sql=true
+
+# Shared secret required in the X-Admin-Key header for every /api/admin/**
+# request (currently just the bulk CSV import). There is no other
+# authentication in this project yet - if this is left blank, /api/admin/**
+# rejects all requests rather than being silently open. Set this to a long
+# random value and keep it out of version control.
+raillens.admin.api-key=<ADMIN_API_KEY>
+
+# Comma-separated list of origins allowed to call /api/** from a browser.
+# Defaults to http://localhost:3000 if unset. Set this to your deployed
+# frontend's origin(s) in any non-local environment, or CORS will silently
+# reject every request from it.
+raillens.cors.allowed-origins=http://localhost:3000
+
+# HMAC signing secret for login/register JWTs (see JwtService). Required -
+# the app refuses to start without one, and refuses to start if it's under
+# 32 bytes (too weak for HS256). Generate one with, e.g.:
+#   openssl rand -base64 32
+# Keep this out of version control; rotating it invalidates every issued
+# token immediately (all users are logged out).
+raillens.jwt.secret=<JWT_SECRET_AT_LEAST_32_BYTES>
+
+# How long an issued JWT stays valid. Defaults to 60 minutes if unset.
+raillens.jwt.expiration-minutes=60

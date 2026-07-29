@@ -1,0 +1,104 @@
+package com.labs.train.train_db.service;
+
+import java.security.Key;
+import java.util.Date;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * Signs and verifies the JWTs handed out by {@link AuthService}.
+ *
+ * Deliberately hand-rolled with jjwt rather than adopting the full Spring
+ * Security filter-chain framework (see the comment above the jjwt/
+ * spring-security-crypto dependencies in pom.xml) - this keeps the same
+ * "small, explicit, fail-closed component" shape as {@code
+ * AdminApiKeyInterceptor} and {@code RateLimitInterceptor} rather than
+ * introducing a second, competing security paradigm alongside them.
+ *
+ * Fails closed at startup: if {@code raillens.jwt.secret} isn't configured
+ * (or is too short for HS256), the application refuses to start rather than
+ * silently issuing tokens that could be forged or brute-forced.
+ */
+@Slf4j
+@Service
+public class JwtService {
+
+        @Value("${raillens.jwt.secret:}")
+        private String configuredSecret;
+
+        @Value("${raillens.jwt.expiration-minutes:60}")
+        private long expirationMinutes;
+
+        private Key signingKey;
+
+        @PostConstruct
+        void init() {
+                if (configuredSecret == null || configuredSecret.isBlank()) {
+                        throw new IllegalStateException(
+                                        "raillens.jwt.secret is not configured - refusing to start. "
+                                                        + "Set it to a random string of at least 32 characters "
+                                                        + "(see application.properties.example).");
+                }
+
+                if (configuredSecret.getBytes().length < 32) {
+                        throw new IllegalStateException(
+                                        "raillens.jwt.secret is too short for HS256 - it must be at least "
+                                                        + "32 bytes (256 bits). Generate one with, e.g., "
+                                                        + "`openssl rand -base64 32`.");
+                }
+
+                this.signingKey = Keys.hmacShaKeyFor(configuredSecret.getBytes());
+        }
+
+        public long getExpirationSeconds() {
+                return expirationMinutes * 60;
+        }
+
+        /**
+         * Issues a signed JWT with the username as subject. Intentionally
+         * carries no roles/permissions claim yet - see the comment on {@code
+         * User.java} explaining why a role column hasn't been introduced.
+         */
+        public String generateToken(String username) {
+
+                Date now = new Date();
+                Date expiry = new Date(now.getTime() + expirationMinutes * 60 * 1000);
+
+                return Jwts.builder()
+                                .subject(username)
+                                .issuedAt(now)
+                                .expiration(expiry)
+                                .signWith(signingKey)
+                                .compact();
+        }
+
+        /**
+         * Validates the token's signature and expiry and returns the username
+         * (subject). Returns {@code null} on any failure (expired, malformed,
+         * bad signature) rather than throwing, so callers - e.g. an
+         * interceptor gating a protected route - can treat "invalid token" and
+         * "no token" the same way without a try/catch at every call site.
+         */
+        public String validateAndGetUsername(String token) {
+                try {
+                        Claims claims = Jwts.parser()
+                                        .verifyWith((javax.crypto.SecretKey) signingKey)
+                                        .build()
+                                        .parseSignedClaims(token)
+                                        .getPayload();
+
+                        return claims.getSubject();
+                } catch (JwtException | IllegalArgumentException ex) {
+                        log.debug("Rejecting invalid JWT: {}", ex.getMessage());
+                        return null;
+                }
+        }
+}

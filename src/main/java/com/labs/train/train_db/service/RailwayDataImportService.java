@@ -9,6 +9,8 @@ import java.util.Map;
 import java.util.HashSet;
 import java.util.Set;
 
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +22,8 @@ import com.labs.train.train_db.repository.StationRepository;
 import com.labs.train.train_db.repository.TrainRepository;
 import com.labs.train.train_db.repository.TrainScheduleRepository;
 
+import com.labs.train.train_db.config.CacheConfig;
+import com.labs.train.train_db.model.ImportResult;
 import com.labs.train.train_db.entity.*;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
@@ -34,13 +38,36 @@ public class RailwayDataImportService {
     private final StationRepository stationRepository;
     private final TrainRepository trainRepository;
     private final TrainScheduleRepository trainScheduleRepository;
+    private final CacheManager cacheManager;
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("H:mm");
 
-    public void importCsv() {
+    /**
+     * Imports {@code data/train_dataset.csv}. This used to return {@code
+     * void} and swallow any top-level failure with {@code
+     * e.printStackTrace()} - the caller (see {@code
+     * RailwayDataImportController}) had no way to tell a successful import
+     * from a silently failed one; it always returned the same hardcoded
+     * "Import Started" string. This now returns a result the controller can
+     * actually report.
+     *
+     * NOTE: memory footprint for very large files is a separate, known
+     * concern (backend architecture review's "unbatched transaction" finding
+     * - {@code AppConstants.IMPORT_BATCH_SIZE} exists but isn't used yet).
+     * Fixing that requires periodic persistence-context flush/clear, which
+     * changes entity lifecycle semantics for the cached Station/Train
+     * lookups used below; that's not something to change without being able
+     * to verify it against a real database, which this sandbox can't do. Left
+     * as a flagged follow-up rather than an unverified change to the one
+     * pathway that writes bulk production data.
+     */
+    public ImportResult importCsv() {
 
         Map<String, Station> stationCache = new HashMap<>();
         Map<String, Train> trainCache = new HashMap<>();
         Set<String> processedTrains = new HashSet<>();
+
+        int count = 0;
+        int failedCount = 0;
 
         try {
 
@@ -79,8 +106,6 @@ public class RailwayDataImportService {
                     .setSkipHeaderRecord(true)
                     .get()
                     .parse(reader);
-
-            int count = 0;
 
             for (CSVRecord record : parser) {
 
@@ -168,6 +193,7 @@ public class RailwayDataImportService {
                         log.info("Imported {} rows", count);
                     }
                 } catch (Exception ex) {
+                    failedCount++;
                     log.error("Failed to import row: {}", record.toString(), ex);
                 }
 
@@ -175,11 +201,60 @@ public class RailwayDataImportService {
 
             reader.close();
 
-            log.info("Imported {} rows successfully", count);
+            log.info("Import finished: {} rows imported, {} rows failed", count, failedCount);
+
+            evictCachesIfAnyRowsChanged(count);
+
+            return new ImportResult(
+                            true,
+                            count,
+                            failedCount,
+                            "Import completed: %d row(s) imported, %d row(s) failed"
+                                            .formatted(count, failedCount));
 
         } catch (Exception e) {
 
-            e.printStackTrace();
+            log.error("Railway data import failed", e);
+
+            // Even a failed run may have written some rows before hitting the
+            // error (per-row failures are caught and skipped above; this
+            // catch is for something failing outside that loop). Evict
+            // rather than risk serving stale cached routes for whatever did
+            // get written.
+            evictCachesIfAnyRowsChanged(count);
+
+            return new ImportResult(
+                            false,
+                            count,
+                            failedCount,
+                            "Import failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * A bulk import can touch an arbitrary, potentially large number of
+     * distinct trains and stations in one run - tracking exactly which
+     * ones changed just to evict them individually isn't worth the extra
+     * bookkeeping for an admin-triggered, infrequent operation. Clearing
+     * both caches outright is simpler and correctness-first; the next
+     * lookup for any train/station just repopulates the cache.
+     */
+    private void evictCachesIfAnyRowsChanged(int rowsImported) {
+
+        if (rowsImported == 0) {
+            return;
+        }
+
+        clearCache(CacheConfig.TRAIN_DETAILS_CACHE);
+        clearCache(CacheConfig.STATION_DETAILS_CACHE);
+    }
+
+    private void clearCache(String cacheName) {
+
+        Cache cache = cacheManager.getCache(cacheName);
+
+        if (cache != null) {
+            cache.clear();
         }
     }
 

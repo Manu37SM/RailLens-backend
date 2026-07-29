@@ -1,19 +1,21 @@
 package com.labs.train.train_db.service;
 
 import java.time.Duration;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.labs.train.train_db.common.AppConstants;
+import com.labs.train.train_db.config.CacheConfig;
 import com.labs.train.train_db.entity.Train;
 import com.labs.train.train_db.entity.TrainSchedule;
 import com.labs.train.train_db.exception.ResourceNotFoundException;
+import com.labs.train.train_db.model.CreateTrainRequest;
 import com.labs.train.train_db.model.RouteStopResponse;
 import com.labs.train.train_db.model.TrainDetailsResponse;
 import com.labs.train.train_db.model.TrainSearchResponse;
@@ -32,6 +34,48 @@ public class TrainService {
 
         private final TrainRepository trainRepository;
         private final TrainScheduleRepository trainScheduleRepository;
+        private final JourneyDayCalculator journeyDayCalculator;
+
+        /**
+         * Duplicate train numbers are rejected by the database's unique
+         * constraint (see {@code GlobalExceptionHandler}'s handling of
+         * {@code DataIntegrityViolationException}) rather than a separate
+         * existence check here - avoids a check-then-act race and keeps this
+         * method to a single round trip.
+         */
+        @Transactional
+        public TrainSearchResponse createTrain(CreateTrainRequest request) {
+
+                log.info("Creating train {}", request.trainNumber());
+
+                Train train = new Train();
+                train.setTrainNumber(request.trainNumber());
+                train.setTrainName(request.trainName());
+
+                Train saved = trainRepository.save(train);
+
+                return new TrainSearchResponse(
+                                saved.getTrainNumber(),
+                                saved.getTrainName());
+        }
+
+        /**
+         * Backs {@code GET /api/trains}. Previously this returned every train
+         * in the database as raw entities in one response - fine at a few
+         * hundred rows, unworkable once the dataset covers the full IR
+         * timetable (~8,000+ trains). Now paginated and mapped to the same
+         * DTO used by search, so a caller can't tell which path produced the
+         * response.
+         */
+        public Page<TrainSearchResponse> getAllTrains(Pageable pageable) {
+
+                log.info("Listing trains, page {} size {}", pageable.getPageNumber(), pageable.getPageSize());
+
+                return trainRepository.findAll(pageable)
+                                .map(train -> new TrainSearchResponse(
+                                                train.getTrainNumber(),
+                                                train.getTrainName()));
+        }
 
         public List<TrainSearchResponse> search(String query) {
 
@@ -57,6 +101,13 @@ public class TrainService {
                 return result;
         }
 
+        /**
+         * Cached: a train's schedule almost never changes minute-to-minute,
+         * but a popular train's detail page can be hit by many different
+         * users. See CacheConfig for the eviction strategy that keeps this
+         * from ever serving a schedule that no longer matches the database.
+         */
+        @Cacheable(cacheNames = CacheConfig.TRAIN_DETAILS_CACHE, key = "#trainNumber")
         public TrainDetailsResponse getTrainDetails(String trainNumber) {
 
                 log.info("Fetching route for train {}", trainNumber);
@@ -74,24 +125,23 @@ public class TrainService {
 
                 List<RouteStopResponse> route = new java.util.ArrayList<>();
 
-                int journeyDay = 1;
-
-                LocalTime previousDeparture = schedules.getFirst().getDepartureTime();
+                List<Integer> journeyDays = journeyDayCalculator.computeJourneyDays(schedules);
 
                 for (int i = 0; i < schedules.size(); i++) {
 
                         TrainSchedule schedule = schedules.get(i);
 
-                        if (i > 0 &&
-                                        schedule.getArrivalTime() != null &&
-                                        schedule.getArrivalTime().isBefore(previousDeparture)) {
+                        int journeyDay = journeyDays.get(i);
 
-                                journeyDay++;
+                        Integer distanceFromPrevious = null;
+
+                        if (i == 0) {
+                                distanceFromPrevious = 0;
+                        } else if (schedule.getDistance() != null &&
+                                        schedules.get(i - 1).getDistance() != null) {
+
+                                distanceFromPrevious = schedule.getDistance() - schedules.get(i - 1).getDistance();
                         }
-
-                        int distanceFromPrevious = (i == 0)
-                                        ? 0
-                                        : schedule.getDistance() - schedules.get(i - 1).getDistance();
 
                         int haltMinutes = 0;
 
@@ -131,14 +181,14 @@ public class TrainService {
                                                         journeyDay,
                                                         i == 0,
                                                         i == schedules.size() - 1));
-
-                        if (schedule.getDepartureTime() != null) {
-                                previousDeparture = schedule.getDepartureTime();
-                        }
                 }
 
                 int totalStops = route.size();
-                int journeyDistance = route.getLast().distance();
+                Integer journeyDistance = route.getLast().distance();
+
+                if (journeyDistance == null) {
+                        journeyDistance = 0;
+                }
 
                 long journeyMinutes = calculateJourneyMinutes(schedules, route);
 
@@ -176,16 +226,10 @@ public class TrainService {
                 RouteStopResponse first = route.getFirst();
                 RouteStopResponse last = route.getLast();
 
-                LocalDate baseDate = LocalDate.of(2000, 1, 1);
-
-                LocalDateTime departure = LocalDateTime.of(
-                                baseDate.plusDays(first.journeyDay() - 1),
-                                schedules.getFirst().getDepartureTime());
-
-                LocalDateTime arrival = LocalDateTime.of(
-                                baseDate.plusDays(last.journeyDay() - 1),
+                return journeyDayCalculator.minutesBetween(
+                                first.journeyDay(),
+                                schedules.getFirst().getDepartureTime(),
+                                last.journeyDay(),
                                 schedules.getLast().getArrivalTime());
-
-                return Duration.between(departure, arrival).toMinutes();
         }
 }

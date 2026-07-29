@@ -2,6 +2,9 @@ package com.labs.train.train_db.controller;
 
 import java.util.List;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -11,12 +14,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.labs.train.train_db.entity.Train;
+import com.labs.train.train_db.model.CreateTrainRequest;
 import com.labs.train.train_db.model.TrainDetailsResponse;
 import com.labs.train.train_db.model.TrainSearchResponse;
-import com.labs.train.train_db.repository.TrainRepository;
 import com.labs.train.train_db.service.TrainService;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
@@ -27,20 +30,27 @@ import lombok.RequiredArgsConstructor;
 @Validated
 public class TrainController {
 
-    private final TrainRepository trainRepository;
     private final TrainService trainService;
 
     @PostMapping
-    public Train createTrain(
-            @RequestBody Train train) {
+    public TrainSearchResponse createTrain(
+            @RequestBody @Valid CreateTrainRequest request) {
 
-        return trainRepository.save(train);
+        return trainService.createTrain(request);
     }
 
+    /**
+     * Paginated to avoid shipping every row in the table in one response
+     * (see the RailLens backend review's "unpaginated list endpoint"
+     * finding). Defaults to 20 per page, capped implicitly by
+     * {@code Pageable}'s own bounds; callers can override with the standard
+     * {@code ?page=&size=&sort=} query params.
+     */
     @GetMapping
-    public List<Train> getAllTrains() {
+    public Page<TrainSearchResponse> getAllTrains(
+            @PageableDefault(size = 20) Pageable pageable) {
 
-        return trainRepository.findAll();
+        return trainService.getAllTrains(pageable);
     }
 
     @GetMapping("/search")

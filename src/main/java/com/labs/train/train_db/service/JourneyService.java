@@ -16,10 +16,6 @@ import com.labs.train.train_db.repository.TrainScheduleRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import java.time.Duration;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 
 @Slf4j
 @Service
@@ -28,6 +24,7 @@ import java.time.LocalTime;
 public class JourneyService {
 
         private final TrainScheduleRepository trainScheduleRepository;
+        private final JourneyDayCalculator journeyDayCalculator;
 
         public JourneySearchResponse search(String from, String to) {
 
@@ -47,7 +44,11 @@ public class JourneyService {
                                                 schedule -> schedule.getTrain().getId(),
                                                 Function.identity()));
 
-                List<JourneyTrainResponse> journeys = new ArrayList<>();
+                // Filter down to the trains that actually qualify (correct
+                // direction, both stops have a known distance) before touching
+                // the schedule table again, so the batch route fetch below only
+                // asks for data we're actually going to use.
+                List<TrainSchedule> matchedSources = new ArrayList<>();
 
                 for (TrainSchedule source : sourceSchedules) {
 
@@ -61,10 +62,46 @@ public class JourneyService {
                                 continue;
                         }
 
+                        if (source.getDistance() == null || destination.getDistance() == null) {
+                                continue;
+                        }
+
+                        matchedSources.add(source);
+                }
+
+                if (matchedSources.isEmpty()) {
+                        return new JourneySearchResponse(from, to, 0, List.of());
+                }
+
+                /*
+                 * Previously each matched train issued its own
+                 * findByTrain_TrainNumberOrderBySequenceNo query inside the loop
+                 * below - an N+1 query pattern that scales with the number of
+                 * trains between the two stations (backend architecture
+                 * review). Fetching every matched train's full route in one
+                 * query and grouping in memory turns that into a single round
+                 * trip regardless of result size.
+                 */
+                List<Long> matchedTrainIds = matchedSources.stream()
+                                .map(source -> source.getTrain().getId())
+                                .distinct()
+                                .toList();
+
+                Map<Long, List<TrainSchedule>> routesByTrainId = trainScheduleRepository
+                                .findByTrain_IdInOrderByTrain_IdAscSequenceNoAsc(matchedTrainIds)
+                                .stream()
+                                .collect(Collectors.groupingBy(
+                                                schedule -> schedule.getTrain().getId()));
+
+                List<JourneyTrainResponse> journeys = new ArrayList<>();
+
+                for (TrainSchedule source : matchedSources) {
+
+                        TrainSchedule destination = destinationMap.get(source.getTrain().getId());
+
                         int distance = destination.getDistance() - source.getDistance();
 
-                        List<TrainSchedule> route = trainScheduleRepository.findByTrain_TrainNumberOrderBySequenceNo(
-                                        source.getTrain().getTrainNumber());
+                        List<TrainSchedule> route = routesByTrainId.get(source.getTrain().getId());
 
                         journeys.add(
                                         new JourneyTrainResponse(
@@ -88,51 +125,31 @@ public class JourneyService {
                         TrainSchedule source,
                         TrainSchedule destination) {
 
-                int journeyDay = 1;
-                LocalTime previousDeparture = route.getFirst().getDepartureTime();
+                if (source.getDepartureTime() == null || destination.getArrivalTime() == null) {
+                        return "";
+                }
+
+                List<Integer> journeyDays = journeyDayCalculator.computeJourneyDays(route);
 
                 int sourceDay = 1;
                 int destinationDay = 1;
 
                 for (int i = 0; i < route.size(); i++) {
 
-                        TrainSchedule schedule = route.get(i);
+                        Integer sequenceNo = route.get(i).getSequenceNo();
 
-                        if (i > 0
-                                        && schedule.getArrivalTime() != null
-                                        && schedule.getArrivalTime().isBefore(previousDeparture)) {
-
-                                journeyDay++;
+                        if (sequenceNo.equals(source.getSequenceNo())) {
+                                sourceDay = journeyDays.get(i);
                         }
 
-                        if (schedule.getSequenceNo().equals(source.getSequenceNo())) {
-                                sourceDay = journeyDay;
-                        }
-
-                        if (schedule.getSequenceNo().equals(destination.getSequenceNo())) {
-                                destinationDay = journeyDay;
-                        }
-
-                        if (schedule.getDepartureTime() != null) {
-                                previousDeparture = schedule.getDepartureTime();
+                        if (sequenceNo.equals(destination.getSequenceNo())) {
+                                destinationDay = journeyDays.get(i);
                         }
                 }
 
-                if (source.getDepartureTime() == null || destination.getArrivalTime() == null) {
-                        return "";
-                }
-
-                LocalDate baseDate = LocalDate.of(2000, 1, 1);
-
-                LocalDateTime departure = LocalDateTime.of(
-                                baseDate.plusDays(sourceDay - 1),
-                                source.getDepartureTime());
-
-                LocalDateTime arrival = LocalDateTime.of(
-                                baseDate.plusDays(destinationDay - 1),
-                                destination.getArrivalTime());
-
-                long minutes = Duration.between(departure, arrival).toMinutes();
+                long minutes = journeyDayCalculator.minutesBetween(
+                                sourceDay, source.getDepartureTime(),
+                                destinationDay, destination.getArrivalTime());
 
                 long hours = minutes / 60;
                 long remainingMinutes = minutes % 60;

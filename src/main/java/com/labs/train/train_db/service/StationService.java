@@ -4,15 +4,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.labs.train.train_db.common.AppConstants;
+import com.labs.train.train_db.config.CacheConfig;
 import com.labs.train.train_db.entity.Station;
 import com.labs.train.train_db.entity.TrainSchedule;
 import com.labs.train.train_db.exception.ResourceNotFoundException;
+import com.labs.train.train_db.model.CreateStationRequest;
 import com.labs.train.train_db.model.StationResponse;
 import com.labs.train.train_db.model.StationSearchResponse;
 import com.labs.train.train_db.model.StationTrainResponse;
@@ -30,6 +34,42 @@ public class StationService {
 
         private final StationRepository stationRepository;
         private final TrainScheduleRepository trainScheduleRepository;
+
+        /**
+         * Duplicate station codes are rejected by the database's unique
+         * constraint (see {@code GlobalExceptionHandler}'s handling of
+         * {@code DataIntegrityViolationException}) rather than a separate
+         * existence check here.
+         */
+        @Transactional
+        public StationSearchResponse createStation(CreateStationRequest request) {
+
+                log.info("Creating station {}", request.stationCode());
+
+                Station station = new Station();
+                station.setStationCode(request.stationCode());
+                station.setStationName(request.stationName());
+
+                Station saved = stationRepository.save(station);
+
+                return new StationSearchResponse(
+                                saved.getStationCode(),
+                                saved.getStationName());
+        }
+
+        /**
+         * Backs {@code GET /api/stations}. See {@code TrainService#getAllTrains}
+         * for why this is paginated rather than returning every row.
+         */
+        public Page<StationSearchResponse> getAllStations(Pageable pageable) {
+
+                log.info("Listing stations, page {} size {}", pageable.getPageNumber(), pageable.getPageSize());
+
+                return stationRepository.findAll(pageable)
+                                .map(station -> new StationSearchResponse(
+                                                station.getStationCode(),
+                                                station.getStationName()));
+        }
 
         public List<StationSearchResponse> searchStations(String query) {
 
@@ -51,6 +91,12 @@ public class StationService {
                                 .toList();
         }
 
+        /**
+         * Cached for the same reason as TrainService#getTrainDetails - a
+         * relatively small set of stations get looked up repeatedly by many
+         * different users. See CacheConfig for the eviction strategy.
+         */
+        @Cacheable(cacheNames = CacheConfig.STATION_DETAILS_CACHE, key = "#stationCode")
         public StationResponse getStation(String stationCode) {
 
                 log.info("Fetching station details for {}", stationCode);
