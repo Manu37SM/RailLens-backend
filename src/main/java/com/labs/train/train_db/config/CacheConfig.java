@@ -61,13 +61,49 @@ public class CacheConfig {
          */
         public static final String SEARCH_INDEX_CACHE = "searchIndex";
 
+        /**
+         * Single-entry cache for {@code RailwayNetworkService#buildSnapshot} -
+         * the full station-graph build (connected components + Brandes'
+         * algorithm for betweenness/closeness/diameter over the largest
+         * component) is the most expensive computation in the app, run once
+         * on cache miss rather than per request. Backs every "Railway
+         * Intelligence" feature that needs network-wide context (station
+         * importance/connectivity, train uniqueness, route analytics).
+         */
+        public static final String NETWORK_CACHE = "railwayNetwork";
+
+        /**
+         * Single-entry cache for {@code RankingsService#getRankings} - like
+         * STATS_CACHE, a parameterless public endpoint returning the same
+         * aggregate response for everyone, and like NETWORK_CACHE it partly
+         * builds on RailwayNetworkService's own cached snapshot but still
+         * does its own full schedule-table scan for the halt-count/duration
+         * leaderboards, so it's worth caching separately.
+         */
+        public static final String RANKINGS_CACHE = "rankings";
+
+        /**
+         * Single-entry cache for {@code FunStatsService#getFunStats} - same
+         * "parameterless public endpoint, cache the one aggregate response"
+         * reasoning as STATS_CACHE/RANKINGS_CACHE.
+         */
+        public static final String FUN_STATS_CACHE = "funStats";
+
+        /**
+         * Single-entry cache for {@code AchievementsService#getAchievements} -
+         * same reasoning as STATS_CACHE/RANKINGS_CACHE/FUN_STATS_CACHE.
+         */
+        public static final String ACHIEVEMENTS_CACHE = "achievements";
+
         @Bean
         public CacheManagerCustomizer<CaffeineCacheManager> cacheManagerCustomizer() {
 
                 return cacheManager -> {
 
                         cacheManager.setCacheNames(
-                                        List.of(TRAIN_DETAILS_CACHE, STATION_DETAILS_CACHE, STATS_CACHE, SEARCH_INDEX_CACHE));
+                                        List.of(
+                                                        TRAIN_DETAILS_CACHE, STATION_DETAILS_CACHE, STATS_CACHE, SEARCH_INDEX_CACHE,
+                                                        NETWORK_CACHE, RANKINGS_CACHE, FUN_STATS_CACHE, ACHIEVEMENTS_CACHE));
 
                         cacheManager.setCaffeine(
                                         Caffeine.newBuilder()

@@ -48,7 +48,11 @@ public class AdminService {
                                 CacheConfig.TRAIN_DETAILS_CACHE,
                                 CacheConfig.STATION_DETAILS_CACHE,
                                 CacheConfig.STATS_CACHE,
-                                CacheConfig.SEARCH_INDEX_CACHE);
+                                CacheConfig.SEARCH_INDEX_CACHE,
+                                CacheConfig.NETWORK_CACHE,
+                                CacheConfig.RANKINGS_CACHE,
+                                CacheConfig.FUN_STATS_CACHE,
+                                CacheConfig.ACHIEVEMENTS_CACHE);
 
                 for (String cacheName : cacheNames) {
 

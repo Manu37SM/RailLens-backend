@@ -123,12 +123,16 @@ public class TrainService {
                 String queryLower = query.toLowerCase(Locale.ROOT);
                 int maxDistance = FuzzyMatch.maxDistanceFor(queryLower.length());
 
+                // Explicit lambdas rather than Map.Entry::getValue/getKey - avoids
+                // the JDT null analyzer's "unchecked conversion for the
+                // receiver" warning on the method-reference form; same behavior
+                // either way.
                 return fuzzySearchIndex().stream()
                                 .map(train -> Map.entry(train, fuzzyScore(train, queryLower)))
                                 .filter(entry -> entry.getValue() <= maxDistance)
-                                .sorted(Comparator.comparingInt(Map.Entry::getValue))
+                                .sorted(Comparator.comparingInt(entry -> entry.getValue()))
                                 .limit(AppConstants.SEARCH_PAGE_SIZE)
-                                .map(Map.Entry::getKey)
+                                .map(entry -> entry.getKey())
                                 .toList();
         }
 

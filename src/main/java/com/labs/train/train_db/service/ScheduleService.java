@@ -44,26 +44,26 @@ public class ScheduleService {
 
                 log.info(
                                 "Creating schedule entry for train {} at station {}",
-                                request.getTrainNumber(),
-                                request.getStationCode());
+                                request.trainNumber(),
+                                request.stationCode());
 
                 Train train = trainRepository
-                                .findByTrainNumber(request.getTrainNumber())
+                                .findByTrainNumber(request.trainNumber())
                                 .orElseThrow(() -> new ResourceNotFoundException(
-                                                "Train not found: " + request.getTrainNumber()));
+                                                "Train not found: " + request.trainNumber()));
 
                 Station station = stationRepository
-                                .findByStationCode(request.getStationCode())
+                                .findByStationCode(request.stationCode())
                                 .orElseThrow(() -> new ResourceNotFoundException(
-                                                "Station not found: " + request.getStationCode()));
+                                                "Station not found: " + request.stationCode()));
 
                 TrainSchedule schedule = new TrainSchedule();
 
                 schedule.setTrain(train);
                 schedule.setStation(station);
-                schedule.setSequenceNo(request.getSequenceNo());
-                schedule.setArrivalTime(request.getArrivalTime());
-                schedule.setDepartureTime(request.getDepartureTime());
+                schedule.setSequenceNo(request.sequenceNo());
+                schedule.setArrivalTime(request.arrivalTime());
+                schedule.setDepartureTime(request.departureTime());
 
                 TrainSchedule saved = trainScheduleRepository.save(schedule);
 

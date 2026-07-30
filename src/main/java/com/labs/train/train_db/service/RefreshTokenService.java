@@ -69,8 +69,11 @@ public class RefreshTokenService {
         @Transactional
         public RotatedToken rotate(String rawToken) {
 
+                // Explicit lambda rather than RefreshToken::isValid - avoids the
+                // JDT null analyzer's "unchecked conversion for the receiver"
+                // warning on the method-reference form; same behavior either way.
                 RefreshToken existing = refreshTokenRepository.findByTokenHash(hash(rawToken))
-                                .filter(RefreshToken::isValid)
+                                .filter(token -> token.isValid())
                                 .orElseThrow(() -> new InvalidCredentialsException("Invalid or expired refresh token"));
 
                 existing.setRevoked(true);

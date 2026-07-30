@@ -236,8 +236,18 @@ public class RailwayDataImportService {
      * distinct trains and stations in one run - tracking exactly which
      * ones changed just to evict them individually isn't worth the extra
      * bookkeeping for an admin-triggered, infrequent operation. Clearing
-     * both caches outright is simpler and correctness-first; the next
-     * lookup for any train/station just repopulates the cache.
+     * every cache outright is simpler and correctness-first; the next
+     * lookup for any train/station/aggregate just repopulates the cache.
+     *
+     * Evicts all 8 named caches (see CacheConfig) - this list previously
+     * only covered the original 4 and predated the 4 Railway Intelligence
+     * caches (NETWORK_CACHE/RANKINGS_CACHE/FUN_STATS_CACHE/
+     * ACHIEVEMENTS_CACHE), which meant a CSV import could leave those
+     * endpoints serving stale data for up to the 15-minute TTL. Fixed per
+     * the backend architecture review's "bulk-import cache eviction is
+     * incomplete" finding - AdminService.clearAllCaches() (the manual
+     * cache-clear endpoint) already evicted all 8, so this brings the
+     * import path in line with it.
      */
     private void evictCachesIfAnyRowsChanged(int rowsImported) {
 
@@ -249,6 +259,10 @@ public class RailwayDataImportService {
         clearCache(CacheConfig.STATION_DETAILS_CACHE);
         clearCache(CacheConfig.STATS_CACHE);
         clearCache(CacheConfig.SEARCH_INDEX_CACHE);
+        clearCache(CacheConfig.NETWORK_CACHE);
+        clearCache(CacheConfig.RANKINGS_CACHE);
+        clearCache(CacheConfig.FUN_STATS_CACHE);
+        clearCache(CacheConfig.ACHIEVEMENTS_CACHE);
     }
 
     private void clearCache(String cacheName) {

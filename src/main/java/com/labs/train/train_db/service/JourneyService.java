@@ -1,5 +1,8 @@
 package com.labs.train.train_db.service;
 
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -109,7 +112,7 @@ public class JourneyService {
 
                         List<TrainSchedule> route = routesByTrainId.get(source.getTrain().getId());
 
-                        long durationMinutes = calculateDurationMinutes(route, source, destination);
+                        JourneySegmentAnalysis analysis = analyzeSegment(route, source, destination, distance);
 
                         scored.add(new ScoredJourney(
                                         new JourneyTrainResponse(
@@ -117,18 +120,30 @@ public class JourneyService {
                                                         source.getTrain().getTrainName(),
                                                         source.getDepartureTime(),
                                                         destination.getArrivalTime(),
-                                                        formatDuration(durationMinutes),
-                                                        distance),
-                                        durationMinutes));
+                                                        formatDuration(analysis.durationMinutes()),
+                                                        distance,
+                                                        analysis.movingMinutes(),
+                                                        analysis.haltedMinutes(),
+                                                        analysis.numHalts(),
+                                                        analysis.longestHaltMinutes(),
+                                                        analysis.averageMovingSpeedKmh(),
+                                                        analysis.nightTravelPercent(),
+                                                        analysis.dayTravelPercent()),
+                                        analysis.durationMinutes()));
                 }
 
                 // Fastest first. Journeys with an unknown duration (missing
                 // arrival/departure time in the source data) sort last rather
                 // than first or being silently dropped - calculateDurationMinutes
                 // returns Long.MAX_VALUE for those, see its javadoc.
+                // Explicit lambdas rather than ScoredJourney::durationMinutes /
+                // ScoredJourney::response - the method-reference form on this
+                // local record trips the JDT null analyzer's "unchecked
+                // conversion for the receiver" warning; same behavior either
+                // way, this just avoids the false-positive warning.
                 List<JourneyTrainResponse> journeys = scored.stream()
-                                .sorted(java.util.Comparator.comparingLong(ScoredJourney::durationMinutes))
-                                .map(ScoredJourney::response)
+                                .sorted(java.util.Comparator.comparingLong((ScoredJourney sj) -> sj.durationMinutes()))
+                                .map(sj -> sj.response())
                                 .toList();
 
                 return new JourneySearchResponse(
@@ -139,40 +154,124 @@ public class JourneyService {
         }
 
         /**
-         * Returns {@code Long.MAX_VALUE} (not -1 or null) for an unknown
-         * duration specifically so a plain ascending sort naturally pushes
-         * these to the end without every caller needing a null-check.
+         * "Journey Analysis" (FEATURE.md) - everything JourneyTrainResponse
+         * reports beyond the original duration/distance, scoped to this one
+         * source-to-destination leg rather than the train's whole route (see
+         * TrainIntelligenceService for the whole-route versions of the same
+         * ideas). {@code durationMinutes} keeps the original
+         * {@code Long.MAX_VALUE}-for-unknown sentinel (see the old
+         * calculateDurationMinutes this replaces) so sorting by it still
+         * pushes unknown-duration journeys last; the other fields fall back
+         * to null/zero when times are missing, since there's nothing
+         * meaningful to report without them.
          */
-        private long calculateDurationMinutes(
+        private record JourneySegmentAnalysis(
+                        long durationMinutes,
+                        long movingMinutes,
+                        long haltedMinutes,
+                        int numHalts,
+                        Long longestHaltMinutes,
+                        Double averageMovingSpeedKmh,
+                        Double nightTravelPercent,
+                        Double dayTravelPercent) {
+        }
+
+        private JourneySegmentAnalysis analyzeSegment(
                         List<TrainSchedule> route,
                         TrainSchedule source,
-                        TrainSchedule destination) {
-
-                if (source.getDepartureTime() == null || destination.getArrivalTime() == null) {
-                        return Long.MAX_VALUE;
-                }
+                        TrainSchedule destination,
+                        int distanceKm) {
 
                 List<Integer> journeyDays = journeyDayCalculator.computeJourneyDays(route);
 
-                int sourceDay = 1;
-                int destinationDay = 1;
+                int sourceIndex = -1;
+                int destinationIndex = -1;
 
                 for (int i = 0; i < route.size(); i++) {
 
                         Integer sequenceNo = route.get(i).getSequenceNo();
 
                         if (sequenceNo.equals(source.getSequenceNo())) {
-                                sourceDay = journeyDays.get(i);
+                                sourceIndex = i;
                         }
 
                         if (sequenceNo.equals(destination.getSequenceNo())) {
-                                destinationDay = journeyDays.get(i);
+                                destinationIndex = i;
                         }
                 }
 
-                return journeyDayCalculator.minutesBetween(
+                int numHalts = sourceIndex >= 0 && destinationIndex > sourceIndex
+                                ? destinationIndex - sourceIndex - 1
+                                : 0;
+
+                if (source.getDepartureTime() == null || destination.getArrivalTime() == null
+                                || sourceIndex < 0 || destinationIndex < 0) {
+                        return new JourneySegmentAnalysis(Long.MAX_VALUE, 0, 0, numHalts, null, null, null, null);
+                }
+
+                int sourceDay = journeyDays.get(sourceIndex);
+                int destinationDay = journeyDays.get(destinationIndex);
+
+                long durationMinutes = journeyDayCalculator.minutesBetween(
                                 sourceDay, source.getDepartureTime(),
                                 destinationDay, destination.getArrivalTime());
+
+                long haltedMinutes = 0;
+                Long longestHalt = null;
+
+                LocalDate base = LocalDate.of(2000, 1, 1);
+                long totalMovingMinutes = 0;
+                long nightMinutes = 0;
+
+                for (int i = sourceIndex; i < destinationIndex; i++) {
+
+                        TrainSchedule from = route.get(i);
+                        TrainSchedule to = route.get(i + 1);
+
+                        // The moving leg from this stop's departure to the next
+                        // stop's arrival - excludes the halt at `to` (added
+                        // separately below), same "halt vs. moving" split
+                        // TrainIntelligenceService uses for the whole route.
+                        if (from.getDepartureTime() != null && to.getArrivalTime() != null) {
+
+                                LocalDateTime legStart = LocalDateTime.of(base.plusDays(journeyDays.get(i) - 1), from.getDepartureTime());
+                                LocalDateTime legEnd = LocalDateTime.of(base.plusDays(journeyDays.get(i + 1) - 1), to.getArrivalTime());
+
+                                if (legEnd.isAfter(legStart)) {
+                                        long legMinutes = Duration.between(legStart, legEnd).toMinutes();
+                                        totalMovingMinutes += legMinutes;
+                                        nightMinutes += NightWindowCalculator.nightMinutesInRange(legStart, legEnd);
+                                }
+                        }
+
+                        // Halt at `to`, but only if `to` is an intermediate stop
+                        // (not the destination itself - alighting there isn't a
+                        // "halt" on this leg).
+                        if (i + 1 < destinationIndex
+                                        && to.getArrivalTime() != null && to.getDepartureTime() != null
+                                        && !to.getDepartureTime().isBefore(to.getArrivalTime())) {
+
+                                long haltMinutes = Duration.between(to.getArrivalTime(), to.getDepartureTime()).toMinutes();
+                                haltedMinutes += haltMinutes;
+                                longestHalt = longestHalt == null ? haltMinutes : Math.max(longestHalt, haltMinutes);
+                        }
+                }
+
+                Double averageMovingSpeedKmh = totalMovingMinutes > 0 && distanceKm > 0
+                                ? Math.round(distanceKm / (totalMovingMinutes / 60.0) * 10.0) / 10.0
+                                : null;
+
+                Double nightPercent = null;
+                Double dayPercent = null;
+
+                if (totalMovingMinutes > 0) {
+                        nightPercent = Math.round(nightMinutes * 1000.0 / totalMovingMinutes) / 10.0;
+                        dayPercent = Math.round((100.0 - nightPercent) * 10.0) / 10.0;
+                }
+
+                return new JourneySegmentAnalysis(
+                                durationMinutes, totalMovingMinutes, haltedMinutes, numHalts, longestHalt,
+                                averageMovingSpeedKmh, nightPercent, dayPercent);
         }
 
         private String formatDuration(long minutes) {

@@ -6,7 +6,6 @@ import java.util.Optional;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.labs.train.train_db.entity.Train;
 import com.labs.train.train_db.entity.TrainSchedule;
@@ -26,8 +25,6 @@ public interface TrainScheduleRepository
 
     List<TrainSchedule> findByStation_StationCode(String stationCode);
 
-    List<TrainSchedule> findByStation_StationCodeOrderBySequenceNo(String stationCode);
-
     List<TrainSchedule> findByTrain_IdInOrderByTrain_IdAscSequenceNoAsc(List<Long> trainIds);
 
     /**
@@ -40,7 +37,11 @@ public interface TrainScheduleRepository
      */
     List<TrainSchedule> findAllByOrderByTrain_IdAscSequenceNoAsc();
 
-    @Transactional
+    // No repository-level @Transactional here - the only caller
+    // (RailwayDataImportService) is already class-level @Transactional,
+    // so Spring just joins that existing transaction; the annotation here
+    // was redundant and, per the backend architecture review, an unclear
+    // signal about which layer actually owns the transaction boundary.
     void deleteByTrain(Train train);
 
     /**

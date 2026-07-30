@@ -7,7 +7,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.labs.train.train_db.model.AdminStatsResponse;
+import com.labs.train.train_db.model.DatasetHealthResponse;
 import com.labs.train.train_db.service.AdminService;
+import com.labs.train.train_db.service.DatasetHealthService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -26,10 +28,21 @@ import lombok.RequiredArgsConstructor;
 public class AdminController {
 
         private final AdminService adminService;
+        private final DatasetHealthService datasetHealthService;
 
         @GetMapping("/stats")
         public AdminStatsResponse getStats() {
                 return adminService.getStats();
+        }
+
+        /**
+         * "Dataset Health" diagnostics (FEATURE.md) - see
+         * DatasetHealthResponse for what each check covers and how it differs
+         * from the Python import-time validator in rail-dataset-analyzer.
+         */
+        @GetMapping("/health")
+        public DatasetHealthResponse getDatasetHealth() {
+                return datasetHealthService.checkHealth();
         }
 
         @PostMapping("/cache/clear")

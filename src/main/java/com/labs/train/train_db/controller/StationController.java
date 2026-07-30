@@ -15,8 +15,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.labs.train.train_db.model.CreateStationRequest;
+import com.labs.train.train_db.model.StationIntelligenceResponse;
 import com.labs.train.train_db.model.StationResponse;
 import com.labs.train.train_db.model.StationSearchResponse;
+import com.labs.train.train_db.service.StationIntelligenceService;
 import com.labs.train.train_db.service.StationService;
 
 import jakarta.validation.Valid;
@@ -31,6 +33,7 @@ import lombok.RequiredArgsConstructor;
 public class StationController {
 
     private final StationService stationService;
+    private final StationIntelligenceService stationIntelligenceService;
 
     @PostMapping
     public StationSearchResponse createStation(
@@ -61,6 +64,14 @@ public class StationController {
             @PathVariable @NotBlank String stationCode) {
 
         return stationService.getStation(
+                stationCode.toUpperCase());
+    }
+
+    @GetMapping("/{stationCode}/intelligence")
+    public StationIntelligenceResponse getStationIntelligence(
+            @PathVariable @NotBlank String stationCode) {
+
+        return stationIntelligenceService.getIntelligence(
                 stationCode.toUpperCase());
     }
 }
