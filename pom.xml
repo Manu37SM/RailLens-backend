@@ -45,6 +45,24 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-validation</artifactId>
 		</dependency>
+
+		<!--
+			Versioned schema migrations (see src/main/resources/db/migration
+			and the Database Schema Review's "no versioned migrations" P1
+			finding). Both versions are managed by spring-boot-starter-parent's
+			BOM, so no explicit <version> here. flyway-database-postgresql is a
+			separate artifact as of Flyway 10+ (split out of flyway-core) and
+			is required for Postgres support - flyway-core alone is not
+			enough.
+		-->
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-core</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-database-postgresql</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc</artifactId>
@@ -163,11 +181,9 @@
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
 			<scope>test</scope>
 		</dependency>
-		<dependency>
-			<groupId>com.opencsv</groupId>
-			<artifactId>opencsv</artifactId>
-			<version>5.9</version>
-		</dependency>
+		<!-- opencsv removed - RailwayDataImportService uses Apache
+		     commons-csv (CSVFormat/CSVParser) exclusively; opencsv was an
+		     unused dependency (backend architecture review finding). -->
 		<dependency>
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-csv</artifactId>
