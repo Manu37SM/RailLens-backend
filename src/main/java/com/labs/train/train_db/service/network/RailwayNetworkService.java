@@ -3,6 +3,7 @@ package com.labs.train.train_db.service.network;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -19,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.labs.train.train_db.config.CacheConfig;
 import com.labs.train.train_db.entity.TrainSchedule;
 import com.labs.train.train_db.model.NetworkStatsResponse;
-import com.labs.train.train_db.repository.TrainScheduleRepository;
+import com.labs.train.train_db.service.ScheduleSnapshotService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,8 +35,10 @@ import lombok.extern.slf4j.Slf4j;
  * structure, so it's built once here rather than each feature re-scanning
  * the schedule table and re-deriving adjacency independently.
  *
- * A single full-table pass (same {@code findAllByOrderByTrain_IdAscSequenceNoAsc}
- * query StatsService already uses for train speeds) plus one BFS per station
+ * A single full-table pass (the same shared, cached snapshot -
+ * {@code ScheduleSnapshotService} - StatsService/RankingsService/
+ * FunStatsService/AchievementsService also read from, rather than each
+ * independently re-querying the same ~300k rows) plus one BFS per station
  * in the largest connected component (Brandes' algorithm, for betweenness/
  * closeness/diameter together in one pass) - expensive enough that it must
  * stay cached (NETWORK_CACHE) rather than recomputed per request, but a
@@ -47,15 +50,18 @@ import lombok.extern.slf4j.Slf4j;
 @Transactional(readOnly = true)
 public class RailwayNetworkService {
 
-        private final TrainScheduleRepository trainScheduleRepository;
+        private final ScheduleSnapshotService scheduleSnapshotService;
 
         @Cacheable(cacheNames = CacheConfig.NETWORK_CACHE)
         public RailwayNetworkSnapshot buildSnapshot() {
 
                 long startedAt = System.currentTimeMillis();
 
-                Map<Long, List<TrainSchedule>> schedulesByTrainId = trainScheduleRepository
-                                .findAllByOrderByTrain_IdAscSequenceNoAsc()
+                // Shared cached snapshot (see ScheduleSnapshotService) instead of
+                // querying the repository directly - avoids this endpoint being
+                // one more independent ~300k-row load on a cold cache.
+                Map<Long, List<TrainSchedule>> schedulesByTrainId = scheduleSnapshotService
+                                .getAllOrderedByTrainThenSequence()
                                 .stream()
                                 .collect(Collectors.groupingBy(schedule -> schedule.getTrain().getId()));
 
@@ -264,55 +270,110 @@ public class RailwayNetworkService {
          * free. Undirected graph, so raw betweenness accumulation double-
          * counts each shortest path (once from each endpoint's BFS) - halved
          * at the end, the standard correction for undirected Brandes.
+         *
+         * Array-indexed, not the String-keyed HashMap version this used to
+         * be. The algorithm is unchanged (same asymptotic O(V*E) cost,
+         * identical output), but the old version rebuilt several HashMaps
+         * from scratch for every one of the V source stations - on a real
+         * ~300k-row schedule import with several thousand stations, that's
+         * tens of millions of hashed String lookups/boxed-object
+         * allocations just for bookkeeping, heavy enough to spike heap
+         * usage and stall the GC (confirmed locally: this endpoint could
+         * exhaust RAM on a constrained machine). Render's free web
+         * instance is capped at 512MB, and this cache entry expires and
+         * recomputes every 15 minutes (see CacheConfig.NETWORK_CACHE), so
+         * that cost wasn't a one-off - it would have repeated in
+         * production. Assigning each station a dense integer index once
+         * and using primitive arrays for distance/sigma/dependency plus a
+         * hand-rolled queue removes essentially all of that per-source
+         * allocation churn.
          */
         private int computeCentralityAndDiameter(Map<String, StationNetworkNode> stations, Set<String> component) {
 
-                Map<String, Double> betweenness = new HashMap<>();
-                for (String code : component) {
-                        betweenness.put(code, 0.0);
+                int n = component.size();
+
+                if (n == 0) {
+                        return 0;
                 }
 
-                int diameter = 0;
+                // Dense index <-> station-code mapping and a precomputed,
+                // component-restricted adjacency list - both built once
+                // (O(V+E)), not rebuilt on every one of the n BFS passes
+                // below like the String/HashMap version did.
+                String[] indexToCode = component.toArray(new String[0]);
+                Map<String, Integer> codeToIndex = new HashMap<>(n * 2);
 
-                for (String source : component) {
+                for (int i = 0; i < n; i++) {
+                        codeToIndex.put(indexToCode[i], i);
+                }
 
-                        Map<String, Integer> distance = new HashMap<>();
-                        Map<String, Double> sigma = new HashMap<>();
-                        Map<String, List<String>> predecessors = new HashMap<>();
+                int[][] adjacency = new int[n][];
 
-                        for (String code : component) {
-                                distance.put(code, -1);
-                                sigma.put(code, 0.0);
-                                predecessors.put(code, new ArrayList<>());
+                for (int i = 0; i < n; i++) {
+
+                        Set<String> neighborCodes = stations.get(indexToCode[i]).neighborTrainCounts.keySet();
+                        int[] neighbors = new int[neighborCodes.size()];
+                        int count = 0;
+
+                        for (String neighborCode : neighborCodes) {
+                                Integer neighborIndex = codeToIndex.get(neighborCode);
+                                // A neighbor should always be in this same component
+                                // (it's how components are found in the first place),
+                                // but this is a graph built from imported CSV data, so
+                                // guard rather than assume.
+                                if (neighborIndex != null) {
+                                        neighbors[count++] = neighborIndex;
+                                }
                         }
 
-                        distance.put(source, 0);
-                        sigma.put(source, 1.0);
+                        adjacency[i] = count == neighbors.length ? neighbors : Arrays.copyOf(neighbors, count);
+                }
 
-                        Queue<String> queue = new ArrayDeque<>();
-                        queue.add(source);
+                double[] betweenness = new double[n];
+                int diameter = 0;
 
-                        List<String> visitOrder = new ArrayList<>();
+                // Reused across every source iteration - reset to their
+                // "unvisited" state at the end of each source (see below)
+                // rather than reallocated, so a run over n sources allocates
+                // these once, not n times.
+                int[] distance = new int[n];
+                Arrays.fill(distance, -1);
+                double[] sigma = new double[n];
+                double[] dependency = new double[n];
+                int[] queue = new int[n];
+                int[] visitOrder = new int[n];
 
-                        while (!queue.isEmpty()) {
+                @SuppressWarnings("unchecked")
+                List<Integer>[] predecessors = new List[n];
 
-                                String v = queue.poll();
-                                visitOrder.add(v);
+                for (int source = 0; source < n; source++) {
 
-                                for (String w : stations.get(v).neighborTrainCounts.keySet()) {
+                        int queueHead = 0;
+                        int queueTail = 0;
+                        int visitCount = 0;
 
-                                        if (!component.contains(w)) {
-                                                continue;
+                        distance[source] = 0;
+                        sigma[source] = 1.0;
+                        queue[queueTail++] = source;
+
+                        while (queueHead < queueTail) {
+
+                                int v = queue[queueHead++];
+                                visitOrder[visitCount++] = v;
+
+                                for (int w : adjacency[v]) {
+
+                                        if (distance[w] < 0) {
+                                                distance[w] = distance[v] + 1;
+                                                queue[queueTail++] = w;
                                         }
 
-                                        if (distance.get(w) < 0) {
-                                                distance.put(w, distance.get(v) + 1);
-                                                queue.add(w);
-                                        }
-
-                                        if (distance.get(w) == distance.get(v) + 1) {
-                                                sigma.put(w, sigma.get(w) + sigma.get(v));
-                                                predecessors.get(w).add(v);
+                                        if (distance[w] == distance[v] + 1) {
+                                                sigma[w] += sigma[v];
+                                                if (predecessors[w] == null) {
+                                                        predecessors[w] = new ArrayList<>();
+                                                }
+                                                predecessors[w].add(v);
                                         }
                                 }
                         }
@@ -320,8 +381,10 @@ public class RailwayNetworkService {
                         int eccentricity = 0;
                         long sumOfDistances = 0;
 
-                        for (String code : component) {
-                                int d = distance.get(code);
+                        for (int i = 0; i < visitCount; i++) {
+
+                                int d = distance[visitOrder[i]];
+
                                 if (d > eccentricity) {
                                         eccentricity = d;
                                 }
@@ -330,36 +393,48 @@ public class RailwayNetworkService {
                                 }
                         }
 
-                        stations.get(source).eccentricity = eccentricity;
-                        stations.get(source).closenessCentrality = sumOfDistances == 0
+                        stations.get(indexToCode[source]).eccentricity = eccentricity;
+                        stations.get(indexToCode[source]).closenessCentrality = sumOfDistances == 0
                                         ? 0.0
-                                        : (component.size() - 1) / (double) sumOfDistances;
+                                        : (n - 1) / (double) sumOfDistances;
 
                         diameter = Math.max(diameter, eccentricity);
 
-                        Map<String, Double> dependency = new HashMap<>();
-                        for (String code : component) {
-                                dependency.put(code, 0.0);
+                        for (int i = visitCount - 1; i >= 0; i--) {
+
+                                int w = visitOrder[i];
+                                List<Integer> preds = predecessors[w];
+
+                                if (preds != null) {
+                                        for (int v : preds) {
+                                                double contribution = (sigma[v] / sigma[w]) * (1 + dependency[w]);
+                                                dependency[v] += contribution;
+                                        }
+                                }
+
+                                if (w != source) {
+                                        betweenness[w] += dependency[w];
+                                }
                         }
 
-                        for (int i = visitOrder.size() - 1; i >= 0; i--) {
-
-                                String w = visitOrder.get(i);
-
-                                for (String v : predecessors.get(w)) {
-                                        double contribution = (sigma.get(v) / sigma.get(w)) * (1 + dependency.get(w));
-                                        dependency.put(v, dependency.get(v) + contribution);
-                                }
-
-                                if (!w.equals(source)) {
-                                        betweenness.put(w, betweenness.get(w) + dependency.get(w));
-                                }
+                        // Reset exactly what this source's BFS touched back to the
+                        // "unvisited" state, ready for the next source - a connected
+                        // component means visitCount is always n here, but doing it
+                        // this way (rather than re-filling whole n-sized structures)
+                        // keeps the reset cost tied to what was actually visited, not
+                        // a separate O(n) pass.
+                        for (int i = 0; i < visitCount; i++) {
+                                int node = visitOrder[i];
+                                distance[node] = -1;
+                                sigma[node] = 0.0;
+                                dependency[node] = 0.0;
+                                predecessors[node] = null;
                         }
                 }
 
-                for (String code : component) {
+                for (int i = 0; i < n; i++) {
                         // Halved: undirected-graph correction (see method javadoc).
-                        stations.get(code).betweennessCentrality = betweenness.get(code) / 2.0;
+                        stations.get(indexToCode[i]).betweennessCentrality = betweenness[i] / 2.0;
                 }
 
                 return diameter;

@@ -1,6 +1,8 @@
 package com.labs.train.train_db.config;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -56,7 +58,7 @@ public class AdminApiKeyInterceptor implements HandlerInterceptor {
 
                 String provided = request.getHeader(HEADER_NAME);
 
-                if (!configuredKey.equals(provided)) {
+                if (!constantTimeEquals(configuredKey, provided)) {
                         log.warn(
                                         "Rejecting {} {} - missing or invalid {} header",
                                         request.getMethod(), request.getRequestURI(), HEADER_NAME);
@@ -65,6 +67,25 @@ public class AdminApiKeyInterceptor implements HandlerInterceptor {
                 }
 
                 return true;
+        }
+
+        /**
+         * {@code String.equals} short-circuits on the first differing byte,
+         * so comparing a guessed key against the real one this way leaks
+         * timing information an attacker could use to recover the key one
+         * byte at a time. {@link MessageDigest#isEqual} always compares the
+         * full length of both inputs, so it takes the same time whether the
+         * first byte or the last byte is wrong. Only meaningful because this
+         * key is a long-lived shared secret checked on every admin request -
+         * not needed for e.g. one-time tokens.
+         */
+        private boolean constantTimeEquals(String expected, String actual) {
+                if (actual == null) {
+                        return false;
+                }
+                return MessageDigest.isEqual(
+                                expected.getBytes(StandardCharsets.UTF_8),
+                                actual.getBytes(StandardCharsets.UTF_8));
         }
 
         /**

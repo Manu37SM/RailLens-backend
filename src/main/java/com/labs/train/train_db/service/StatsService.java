@@ -33,6 +33,7 @@ public class StatsService {
         private final StationRepository stationRepository;
         private final TrainScheduleRepository trainScheduleRepository;
         private final JourneyDayCalculator journeyDayCalculator;
+        private final ScheduleSnapshotService scheduleSnapshotService;
 
         @Cacheable(cacheNames = CacheConfig.STATS_CACHE)
         public StatsResponse getStats() {
@@ -48,8 +49,11 @@ public class StatsService {
 
                 StationTrafficProjection busiestStation = firstOrNull(busiestStations);
 
+                // Shared cached snapshot (see ScheduleSnapshotService) instead of
+                // querying the repository directly - avoids this endpoint being
+                // one more independent ~300k-row load on a cold cache.
                 List<TrainSpeedProjection> trainSpeeds = TrainSpeedCalculator.computeAll(
-                                trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc(), journeyDayCalculator);
+                                scheduleSnapshotService.getAllOrderedByTrainThenSequence(), journeyDayCalculator);
 
                 // Explicit lambdas rather than TrainSpeedProjection::averageSpeedKmh -
                 // the method-reference form trips the JDT null analyzer's

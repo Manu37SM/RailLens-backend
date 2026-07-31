@@ -95,6 +95,19 @@ public class CacheConfig {
          */
         public static final String ACHIEVEMENTS_CACHE = "achievements";
 
+        /**
+         * Single-entry cache for {@code ScheduleSnapshotService} - the raw
+         * "every schedule row, ordered by train then sequence" list that
+         * STATS_CACHE, RANKINGS_CACHE, FUN_STATS_CACHE, ACHIEVEMENTS_CACHE
+         * and NETWORK_CACHE are all ultimately derived from. Sharing this one
+         * cached load instead of each of those independently re-querying the
+         * same ~300k rows keeps a cold-start traffic burst (e.g. right after
+         * Render's free tier spins back up and every cache is empty at once)
+         * from holding several independent copies of the full schedule table
+         * in memory at the same time.
+         */
+        public static final String SCHEDULE_SNAPSHOT_CACHE = "scheduleSnapshot";
+
         @Bean
         public CacheManagerCustomizer<CaffeineCacheManager> cacheManagerCustomizer() {
 
@@ -103,7 +116,8 @@ public class CacheConfig {
                         cacheManager.setCacheNames(
                                         List.of(
                                                         TRAIN_DETAILS_CACHE, STATION_DETAILS_CACHE, STATS_CACHE, SEARCH_INDEX_CACHE,
-                                                        NETWORK_CACHE, RANKINGS_CACHE, FUN_STATS_CACHE, ACHIEVEMENTS_CACHE));
+                                                        NETWORK_CACHE, RANKINGS_CACHE, FUN_STATS_CACHE, ACHIEVEMENTS_CACHE,
+                                                        SCHEDULE_SNAPSHOT_CACHE));
 
                         cacheManager.setCaffeine(
                                         Caffeine.newBuilder()

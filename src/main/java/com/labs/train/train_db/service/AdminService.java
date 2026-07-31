@@ -52,7 +52,8 @@ public class AdminService {
                                 CacheConfig.NETWORK_CACHE,
                                 CacheConfig.RANKINGS_CACHE,
                                 CacheConfig.FUN_STATS_CACHE,
-                                CacheConfig.ACHIEVEMENTS_CACHE);
+                                CacheConfig.ACHIEVEMENTS_CACHE,
+                                CacheConfig.SCHEDULE_SNAPSHOT_CACHE);
 
                 for (String cacheName : cacheNames) {
 

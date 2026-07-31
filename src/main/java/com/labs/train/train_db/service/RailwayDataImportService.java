@@ -15,9 +15,11 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import com.labs.train.train_db.common.AppConstants;
 import com.labs.train.train_db.repository.StationRepository;
 import com.labs.train.train_db.repository.TrainRepository;
 import com.labs.train.train_db.repository.TrainScheduleRepository;
@@ -39,6 +41,7 @@ public class RailwayDataImportService {
     private final TrainRepository trainRepository;
     private final TrainScheduleRepository trainScheduleRepository;
     private final CacheManager cacheManager;
+    private final EntityManager entityManager;
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("H:mm");
 
     /**
@@ -50,15 +53,22 @@ public class RailwayDataImportService {
      * "Import Started" string. This now returns a result the controller can
      * actually report.
      *
-     * NOTE: memory footprint for very large files is a separate, known
-     * concern (backend architecture review's "unbatched transaction" finding
-     * - {@code AppConstants.IMPORT_BATCH_SIZE} exists but isn't used yet).
-     * Fixing that requires periodic persistence-context flush/clear, which
-     * changes entity lifecycle semantics for the cached Station/Train
-     * lookups used below; that's not something to change without being able
-     * to verify it against a real database, which this sandbox can't do. Left
-     * as a flagged follow-up rather than an unverified change to the one
-     * pathway that writes bulk production data.
+     * Batched: every {@code AppConstants.IMPORT_BATCH_SIZE} rows, the
+     * persistence context is flushed and cleared (see the loop below).
+     * Without this, Hibernate keeps every one of up to ~300k inserted
+     * TrainSchedule entities as "managed" (dirty-checking, identity map)
+     * for the entire transaction - on a 512MB deployment target that's a
+     * real OOM risk on the one pathway that writes bulk production data,
+     * not just a performance nit. {@code stationCache}/{@code trainCache}
+     * intentionally keep holding their Station/Train references across a
+     * clear() - those become detached, but that's safe here: TrainSchedule
+     * has no cascade on its {@code @ManyToOne} associations, so Hibernate
+     * only ever needs the detached entity's already-loaded {@code id} to
+     * populate the foreign key column, and any later {@code save()} on a
+     * detached Station/Train (the "keep names up-to-date" branches below)
+     * goes through Spring Data's merge-on-save path, which re-attaches and
+     * returns a fresh managed instance - already how this code re-caches
+     * the result of every such save.
      */
     public ImportResult importCsv() {
 
@@ -192,6 +202,17 @@ public class RailwayDataImportService {
                     if (count % 10000 == 0) {
                         log.info("Imported {} rows", count);
                     }
+
+                    // Release the persistence context's accumulated
+                    // TrainSchedule entities periodically instead of
+                    // letting all ~300k of them sit as "managed" for the
+                    // whole transaction - see this method's javadoc for
+                    // why detaching stationCache/trainCache's entities
+                    // here is safe.
+                    if (count % AppConstants.IMPORT_BATCH_SIZE == 0) {
+                        entityManager.flush();
+                        entityManager.clear();
+                    }
                 } catch (Exception ex) {
                     failedCount++;
                     log.error("Failed to import row: {}", record.toString(), ex);
@@ -263,6 +284,7 @@ public class RailwayDataImportService {
         clearCache(CacheConfig.RANKINGS_CACHE);
         clearCache(CacheConfig.FUN_STATS_CACHE);
         clearCache(CacheConfig.ACHIEVEMENTS_CACHE);
+        clearCache(CacheConfig.SCHEDULE_SNAPSHOT_CACHE);
     }
 
     private void clearCache(String cacheName) {

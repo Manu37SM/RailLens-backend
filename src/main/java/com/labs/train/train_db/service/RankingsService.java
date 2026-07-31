@@ -17,7 +17,6 @@ import com.labs.train.train_db.model.RankingsResponse;
 import com.labs.train.train_db.model.RankingsResponse.HaltCountEntry;
 import com.labs.train.train_db.model.RankingsResponse.HaltDurationEntry;
 import com.labs.train.train_db.model.RankingsResponse.StationCountEntry;
-import com.labs.train.train_db.repository.TrainScheduleRepository;
 import com.labs.train.train_db.service.network.RailwayNetworkSnapshot;
 import com.labs.train.train_db.service.network.RailwayNetworkService;
 import com.labs.train.train_db.service.network.StationNetworkNode;
@@ -40,14 +39,17 @@ public class RankingsService {
         // rate-limited endpoint, nobody needs more than a top-10 view.
         private static final int RANKED_LIST_SIZE = 10;
 
-        private final TrainScheduleRepository trainScheduleRepository;
         private final RailwayNetworkService railwayNetworkService;
+        private final ScheduleSnapshotService scheduleSnapshotService;
 
         @Cacheable(cacheNames = CacheConfig.RANKINGS_CACHE)
         public RankingsResponse getRankings() {
 
-                Map<Long, List<TrainSchedule>> schedulesByTrainId = trainScheduleRepository
-                                .findAllByOrderByTrain_IdAscSequenceNoAsc()
+                // Shared cached snapshot (see ScheduleSnapshotService) instead of
+                // querying the repository directly - avoids this endpoint being
+                // one more independent ~300k-row load on a cold cache.
+                Map<Long, List<TrainSchedule>> schedulesByTrainId = scheduleSnapshotService
+                                .getAllOrderedByTrainThenSequence()
                                 .stream()
                                 .collect(Collectors.groupingBy(schedule -> schedule.getTrain().getId()));
 

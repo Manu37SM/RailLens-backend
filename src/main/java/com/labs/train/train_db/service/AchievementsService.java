@@ -48,6 +48,7 @@ public class AchievementsService {
         private final TrainScheduleRepository trainScheduleRepository;
         private final JourneyDayCalculator journeyDayCalculator;
         private final RailwayNetworkService railwayNetworkService;
+        private final ScheduleSnapshotService scheduleSnapshotService;
 
         @Cacheable(cacheNames = CacheConfig.ACHIEVEMENTS_CACHE)
         public AchievementsResponse getAchievements() {
@@ -55,8 +56,18 @@ public class AchievementsService {
                 List<RouteDistanceProjection> longestRoutes = trainScheduleRepository
                                 .findRouteDistancesDescending(PageRequest.of(0, TOP_LIST_SIZE));
 
+                // Shared cached snapshot (see ScheduleSnapshotService), fetched
+                // once and reused below - this used to call
+                // findAllByOrderByTrain_IdAscSequenceNoAsc() directly, and a
+                // second time to build routesByTrainId, meaning two
+                // independent ~300k-row loads (plus two independent grouped
+                // maps) briefly alive at once on every cache-miss, on top of
+                // being one more service independently reloading the same
+                // data every other Railway Intelligence endpoint also loads.
+                List<TrainSchedule> allSchedules = scheduleSnapshotService.getAllOrderedByTrainThenSequence();
+
                 List<TrainSpeedProjection> trainSpeeds = TrainSpeedCalculator.computeAll(
-                                trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc(), journeyDayCalculator);
+                                allSchedules, journeyDayCalculator);
 
                 // Explicit lambda rather than TrainSpeedProjection::averageSpeedKmh -
                 // same JDT null-analyzer false positive noted elsewhere in this
@@ -75,8 +86,7 @@ public class AchievementsService {
                                 .filter(route -> route.distanceKm() != null && route.distanceKm() > MEGA_ROUTE_THRESHOLD_KM)
                                 .toList();
 
-                Map<Long, List<TrainSchedule>> routesByTrainId = trainScheduleRepository
-                                .findAllByOrderByTrain_IdAscSequenceNoAsc()
+                Map<Long, List<TrainSchedule>> routesByTrainId = allSchedules
                                 .stream()
                                 .collect(Collectors.groupingBy(schedule -> schedule.getTrain().getId()));
 

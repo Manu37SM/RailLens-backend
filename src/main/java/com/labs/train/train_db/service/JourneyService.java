@@ -26,6 +26,17 @@ import lombok.extern.slf4j.Slf4j;
 @Transactional(readOnly = true)
 public class JourneyService {
 
+        // Every other list endpoint in this codebase caps its response size
+        // (RANKED_LIST_SIZE, MAX_RESULTS, SEARCH_PAGE_SIZE,
+        // PaginationConfig.MAX_PAGE_SIZE) - this one didn't, and unlike
+        // those, its size scales with real train traffic through two
+        // stations rather than a fixed dataset-wide top-N, so a pair of
+        // very high-traffic junctions could return an unbounded response.
+        // totalTrains still reports the true match count even when the
+        // returned list is capped, so the frontend/mobile can show "50 of
+        // 240 shown" rather than silently look wrong.
+        private static final int MAX_RESULTS = 100;
+
         private final TrainScheduleRepository trainScheduleRepository;
         private final JourneyDayCalculator journeyDayCalculator;
 
@@ -143,13 +154,14 @@ public class JourneyService {
                 // way, this just avoids the false-positive warning.
                 List<JourneyTrainResponse> journeys = scored.stream()
                                 .sorted(java.util.Comparator.comparingLong((ScoredJourney sj) -> sj.durationMinutes()))
+                                .limit(MAX_RESULTS)
                                 .map(sj -> sj.response())
                                 .toList();
 
                 return new JourneySearchResponse(
                                 from,
                                 to,
-                                journeys.size(),
+                                scored.size(),
                                 journeys);
         }
 

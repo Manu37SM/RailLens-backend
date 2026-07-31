@@ -21,7 +21,6 @@ import com.labs.train.train_db.model.FunStatsResponse.StationNameEntry;
 import com.labs.train.train_db.model.FunStatsResponse.TrainStopEntry;
 import com.labs.train.train_db.model.FunStatsResponse.WordFrequency;
 import com.labs.train.train_db.repository.StationRepository;
-import com.labs.train.train_db.repository.TrainScheduleRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -38,7 +37,7 @@ import lombok.RequiredArgsConstructor;
 public class FunStatsService {
 
         private final StationRepository stationRepository;
-        private final TrainScheduleRepository trainScheduleRepository;
+        private final ScheduleSnapshotService scheduleSnapshotService;
 
         @Cacheable(cacheNames = CacheConfig.FUN_STATS_CACHE)
         public FunStatsResponse getFunStats() {
@@ -144,8 +143,11 @@ public class FunStatsService {
 
         private TrainStopEntry mostUniqueStationsTrain() {
 
-                Map<Long, List<TrainSchedule>> schedulesByTrainId = trainScheduleRepository
-                                .findAllByOrderByTrain_IdAscSequenceNoAsc()
+                // Shared cached snapshot (see ScheduleSnapshotService) instead of
+                // querying the repository directly - avoids this endpoint being
+                // one more independent ~300k-row load on a cold cache.
+                Map<Long, List<TrainSchedule>> schedulesByTrainId = scheduleSnapshotService
+                                .getAllOrderedByTrainThenSequence()
                                 .stream()
                                 .collect(Collectors.groupingBy(schedule -> schedule.getTrain().getId()));
 
