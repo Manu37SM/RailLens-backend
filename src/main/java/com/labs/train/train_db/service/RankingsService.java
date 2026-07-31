@@ -118,7 +118,14 @@ public class RankingsService {
 
                 RailwayNetworkSnapshot network = railwayNetworkService.buildSnapshot();
 
+                // Stations that have never been an origin (originCount == 0)
+                // must not pad out this leaderboard - on the real dataset
+                // there are always far more than RANKED_LIST_SIZE actual
+                // origins so this never mattered in practice, but with a
+                // small station set (e.g. tests) it silently let 0-count
+                // stations fill the remaining slots.
                 List<StationCountEntry> mostPopularOrigins = network.stations.values().stream()
+                                .filter(node -> node.originCount > 0)
                                 .sorted(Comparator.comparingInt(
                                                 (StationNetworkNode node) -> node.originCount).reversed())
                                 .limit(RANKED_LIST_SIZE)
