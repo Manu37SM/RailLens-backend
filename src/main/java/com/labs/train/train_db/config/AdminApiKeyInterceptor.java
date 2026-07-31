@@ -48,6 +48,16 @@ public class AdminApiKeyInterceptor implements HandlerInterceptor {
                         HttpServletResponse response,
                         Object handler) throws Exception {
 
+                // Same reasoning as JwtAuthInterceptor's OPTIONS check - the
+                // browser's CORS preflight for a request carrying
+                // X-Admin-Key never includes that header itself, so
+                // rejecting it here would fail the preflight and block the
+                // real request before it's sent, looking like the backend
+                // is unreachable rather than a 401/503.
+                if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+                        return true;
+                }
+
                 if (configuredKey == null || configuredKey.isBlank()) {
                         log.warn(
                                         "Rejecting {} {} - raillens.admin.api-key is not configured",

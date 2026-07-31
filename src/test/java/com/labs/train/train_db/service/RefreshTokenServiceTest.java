@@ -173,4 +173,15 @@ class RefreshTokenServiceTest {
 
                 verify(refreshTokenRepository).deleteByUser(user);
         }
+
+        @Test
+        void purgeRevokedOrExpiredDelegatesToTheRepositoryAndReturnsTheDeletedCount() {
+
+                when(refreshTokenRepository.deleteRevokedOrExpired(any())).thenReturn(7);
+
+                int deleted = refreshTokenService.purgeRevokedOrExpired();
+
+                assertThat(deleted).isEqualTo(7);
+                verify(refreshTokenRepository).deleteRevokedOrExpired(any());
+        }
 }

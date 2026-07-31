@@ -6,10 +6,15 @@
 # dashboard/account access this session doesn't have.
 #
 # What this does NOT do: it doesn't touch the frontend (train-db-frontend
-# is a separate repo, meant for Vercel - see its README/.env.example) and
-# it doesn't run any Flyway/Liquibase migration (this project has none yet;
-# spring.jpa.hibernate.ddl-auto=update runs against the fresh Render DB on
-# first boot the same way it does locally).
+# is a separate repo, meant for Vercel - see its README/.env.example).
+#
+# Schema is Flyway-managed (spring.jpa.hibernate.ddl-auto=validate, not
+# update - see application.properties.example) - on a fresh Render
+# Postgres instance, Flyway runs every migration under src/main/resources/
+# db/migration from scratch on first boot, the same way it would against
+# any other brand-new database. This comment used to say ddl-auto=update
+# handled first-boot schema creation, back before this project had any
+# versioned migrations - that's no longer accurate.
 services:
   - type: web
     name: raillens-train-db

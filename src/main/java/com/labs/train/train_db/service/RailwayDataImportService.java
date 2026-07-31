@@ -4,7 +4,9 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.HashSet;
 import java.util.Set;
@@ -13,20 +15,18 @@ import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import com.labs.train.train_db.common.AppConstants;
 import com.labs.train.train_db.repository.StationRepository;
 import com.labs.train.train_db.repository.TrainRepository;
-import com.labs.train.train_db.repository.TrainScheduleRepository;
 
 import com.labs.train.train_db.config.CacheConfig;
 import com.labs.train.train_db.model.ImportResult;
 import com.labs.train.train_db.entity.*;
+import com.labs.train.train_db.service.RailwayImportBatchService.BatchImportResult;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
@@ -34,15 +34,33 @@ import org.apache.commons.csv.CSVRecord;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class RailwayDataImportService {
 
     private final StationRepository stationRepository;
     private final TrainRepository trainRepository;
-    private final TrainScheduleRepository trainScheduleRepository;
     private final CacheManager cacheManager;
-    private final EntityManager entityManager;
+    private final RailwayImportBatchService batchService;
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("H:mm");
+
+    /**
+     * A single already-parsed CSV row, handed off to
+     * {@link RailwayImportBatchService} for persistence. Parsing (this
+     * class) and persisting (the batch service, one {@code REQUIRES_NEW}
+     * transaction per {@link AppConstants#IMPORT_BATCH_SIZE} rows) are
+     * deliberately separate steps now - see RailwayImportBatchService's
+     * javadoc for why.
+     */
+    public record ParsedRow(
+                    String trainNo,
+                    String trainName,
+                    Integer sequenceNo,
+                    String stationCode,
+                    String stationName,
+                    LocalTime arrivalTime,
+                    LocalTime departureTime,
+                    Integer distance,
+                    String rawRecord) {
+    }
 
     /**
      * Imports {@code data/train_dataset.csv}. This used to return {@code
@@ -53,22 +71,15 @@ public class RailwayDataImportService {
      * "Import Started" string. This now returns a result the controller can
      * actually report.
      *
-     * Batched: every {@code AppConstants.IMPORT_BATCH_SIZE} rows, the
-     * persistence context is flushed and cleared (see the loop below).
-     * Without this, Hibernate keeps every one of up to ~300k inserted
-     * TrainSchedule entities as "managed" (dirty-checking, identity map)
-     * for the entire transaction - on a 512MB deployment target that's a
-     * real OOM risk on the one pathway that writes bulk production data,
-     * not just a performance nit. {@code stationCache}/{@code trainCache}
-     * intentionally keep holding their Station/Train references across a
-     * clear() - those become detached, but that's safe here: TrainSchedule
-     * has no cascade on its {@code @ManyToOne} associations, so Hibernate
-     * only ever needs the detached entity's already-loaded {@code id} to
-     * populate the foreign key column, and any later {@code save()} on a
-     * detached Station/Train (the "keep names up-to-date" branches below)
-     * goes through Spring Data's merge-on-save path, which re-attaches and
-     * returns a fresh managed instance - already how this code re-caches
-     * the result of every such save.
+     * Parses rows here, then hands each {@code AppConstants.IMPORT_BATCH_SIZE}
+     * chunk to {@link RailwayImportBatchService#importBatch} for persistence
+     * in its own committed transaction - see that class's javadoc for why
+     * the whole import no longer runs as one transaction (this used to be a
+     * single {@code @Transactional} method with a periodic {@code
+     * entityManager.flush()/clear()} to keep Hibernate's persistence context
+     * from holding all ~300k entities as "managed" at once; per-batch
+     * commits now solve both that memory concern and the single-connection/
+     * all-or-nothing-rollback concerns the flush-only approach didn't).
      */
     public ImportResult importCsv() {
 
@@ -78,6 +89,9 @@ public class RailwayDataImportService {
 
         int count = 0;
         int failedCount = 0;
+
+        List<ParsedRow> batch = new ArrayList<>(AppConstants.IMPORT_BATCH_SIZE);
+        int batchesProcessed = 0;
 
         try {
 
@@ -121,106 +135,38 @@ public class RailwayDataImportService {
 
                 try {
 
-                    String trainNo = cleanText(record.get("Train No"));
-                    String trainName = cleanText(record.get("Train Name"));
+                    batch.add(parseRow(record));
 
-                    Integer sequenceNo = Integer.parseInt(cleanText(record.get("SEQ")));
-
-                    String stationCode = cleanText(record.get("Station Code"));
-                    String stationName = cleanText(record.get("Station Name"));
-
-                    LocalTime arrivalTime = parseTime(cleanText(record.get("Arrival Time")));
-                    LocalTime departureTime = parseTime(cleanText(record.get("Departure Time")));
-
-                    Integer distance = parseInteger(cleanText(record.get("Distance")));
-
-                    // Station
-                    Station station = stationCache.get(stationCode);
-
-                    if (station == null) {
-
-                        station = new Station();
-                        station.setStationCode(stationCode);
-                        station.setStationName(stationName);
-
-                        station = stationRepository.save(station);
-
-                        stationCache.put(stationCode, station);
-
-                    } else {
-
-                        // Keep station names up-to-date
-                        if (!stationName.equals(station.getStationName())) {
-                            station.setStationName(stationName);
-                            station = stationRepository.save(station);
-                            stationCache.put(stationCode, station);
-                        }
-                    }
-
-                    // Train
-                    Train train = trainCache.get(trainNo);
-
-                    if (train == null) {
-
-                        train = new Train();
-                        train.setTrainNumber(trainNo);
-                        train.setTrainName(trainName);
-
-                        train = trainRepository.save(train);
-
-                        trainCache.put(trainNo, train);
-
-                    } else {
-
-                        if (!trainName.equals(train.getTrainName())) {
-                            train.setTrainName(trainName);
-                            train = trainRepository.save(train);
-                            trainCache.put(trainNo, train);
-                        }
-                    }
-
-                    // Delete schedule only for existing trains, only once
-                    if (processedTrains.add(trainNo)) {
-                        trainScheduleRepository.deleteByTrain(train);
-                    }
-
-                    // Schedule
-                    TrainSchedule schedule = new TrainSchedule();
-
-                    schedule.setTrain(train);
-                    schedule.setStation(station);
-
-                    schedule.setSequenceNo(sequenceNo);
-                    schedule.setArrivalTime(arrivalTime);
-                    schedule.setDepartureTime(departureTime);
-                    schedule.setDistance(distance);
-
-                    trainScheduleRepository.save(schedule);
-
-                    count++;
-
-                    if (count % 10000 == 0) {
-                        log.info("Imported {} rows", count);
-                    }
-
-                    // Release the persistence context's accumulated
-                    // TrainSchedule entities periodically instead of
-                    // letting all ~300k of them sit as "managed" for the
-                    // whole transaction - see this method's javadoc for
-                    // why detaching stationCache/trainCache's entities
-                    // here is safe.
-                    if (count % AppConstants.IMPORT_BATCH_SIZE == 0) {
-                        entityManager.flush();
-                        entityManager.clear();
-                    }
                 } catch (Exception ex) {
                     failedCount++;
-                    log.error("Failed to import row: {}", record.toString(), ex);
+                    log.error("Failed to parse row: {}", record.toString(), ex);
+                    continue;
                 }
 
+                if (batch.size() >= AppConstants.IMPORT_BATCH_SIZE) {
+                    BatchImportResult result = batchService.importBatch(
+                                    batch, stationCache, trainCache, processedTrains);
+                    count += result.succeeded();
+                    failedCount += result.failed();
+                    batch.clear();
+                    batchesProcessed++;
+
+                    if (batchesProcessed % 10 == 0) {
+                        log.info("Imported {} rows", count);
+                    }
+                }
             }
 
             reader.close();
+
+            // Final partial batch (fewer than IMPORT_BATCH_SIZE rows) that
+            // the loop above never reached the threshold for.
+            if (!batch.isEmpty()) {
+                BatchImportResult result = batchService.importBatch(
+                                batch, stationCache, trainCache, processedTrains);
+                count += result.succeeded();
+                failedCount += result.failed();
+            }
 
             log.info("Import finished: {} rows imported, {} rows failed", count, failedCount);
 
@@ -238,10 +184,13 @@ public class RailwayDataImportService {
             log.error("Railway data import failed", e);
 
             // Even a failed run may have written some rows before hitting the
-            // error (per-row failures are caught and skipped above; this
-            // catch is for something failing outside that loop). Evict
-            // rather than risk serving stale cached routes for whatever did
-            // get written.
+            // error (per-row/per-batch failures are caught and skipped
+            // above; this catch is for something failing outside that, e.g.
+            // the CSV resource itself being unreadable). Evict rather than
+            // risk serving stale cached routes for whatever did get
+            // written - each completed batch is already committed by this
+            // point, unlike the old single-transaction version where a
+            // failure here would have rolled everything back.
             evictCachesIfAnyRowsChanged(count);
 
             return new ImportResult(
@@ -250,6 +199,26 @@ public class RailwayDataImportService {
                             failedCount,
                             "Import failed: " + e.getMessage());
         }
+    }
+
+    private ParsedRow parseRow(CSVRecord record) {
+
+        String trainNo = cleanText(record.get("Train No"));
+        String trainName = cleanText(record.get("Train Name"));
+
+        Integer sequenceNo = Integer.parseInt(cleanText(record.get("SEQ")));
+
+        String stationCode = cleanText(record.get("Station Code"));
+        String stationName = cleanText(record.get("Station Name"));
+
+        LocalTime arrivalTime = parseTime(cleanText(record.get("Arrival Time")));
+        LocalTime departureTime = parseTime(cleanText(record.get("Departure Time")));
+
+        Integer distance = parseInteger(cleanText(record.get("Distance")));
+
+        return new ParsedRow(
+                        trainNo, trainName, sequenceNo, stationCode, stationName,
+                        arrivalTime, departureTime, distance, record.toString());
     }
 
     /**

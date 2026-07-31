@@ -1,0 +1,33 @@
+{
+  "properties": [
+    {
+      "name": "raillens.admin.api-key",
+      "type": "java.lang.String",
+      "description": "Shared secret required in the X-Admin-Key header for every /api/v1/admin/** route (see AdminApiKeyInterceptor). Fails closed - if unset/blank, every admin request is rejected rather than left open. Local dev only in the gitignored application.properties; rotate before any non-local deployment.",
+      "defaultValue": ""
+    },
+    {
+      "name": "raillens.jwt.secret",
+      "type": "java.lang.String",
+      "description": "HS256 signing secret for access JWTs (see JwtService). Generate with `openssl rand -base64 32`. Local dev only in the gitignored application.properties; rotate before any non-local deployment."
+    },
+    {
+      "name": "raillens.jwt.expiration-minutes",
+      "type": "java.lang.Long",
+      "description": "How long an issued access JWT stays valid, in minutes, before a client must exchange its refresh token for a new one (see AuthService/RefreshTokenService).",
+      "defaultValue": 60
+    },
+    {
+      "name": "raillens.jwt.refresh-expiration-days",
+      "type": "java.lang.Long",
+      "description": "How long an issued refresh token stays valid, in days, before it's rejected regardless of revocation status (see RefreshTokenService.issue).",
+      "defaultValue": 30
+    },
+    {
+      "name": "raillens.cors.allowed-origins",
+      "type": "java.lang.String[]",
+      "description": "Comma-separated list of origins allowed to make cross-origin requests to /api/** (see WebConfig). Defaults to the local frontend dev origin only.",
+      "defaultValue": "http://localhost:3000"
+    }
+  ]
+}

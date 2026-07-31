@@ -13,8 +13,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.labs.train.train_db.repository.StationRepository;
 import com.labs.train.train_db.repository.TrainRepository;
-import com.labs.train.train_db.repository.TrainScheduleRepository;
-import jakarta.persistence.EntityManager;
 import org.springframework.cache.CacheManager;
 
 /**
@@ -23,8 +21,10 @@ import org.springframework.cache.CacheManager;
  * full end-to-end test of it would need a real CSV fixture on the test
  * classpath and a real (or very elaborately mocked) persistence layer -
  * out of scope for a fast unit test, and risky to fake without a working
- * database to verify against (see the class's own javadoc on why the
- * unbatched-transaction concern was left alone for the same reason).
+ * database to verify against. The actual per-row persistence logic now
+ * lives in {@link RailwayImportBatchService} (see that class's javadoc and
+ * {@code RailwayImportBatchServiceTest}) since the transaction-per-batch
+ * refactor split parsing (here) from persisting (there).
  *
  * These tests instead target the three private parsing helpers
  * (cleanText/parseTime/parseInteger) via reflection - the actual
@@ -42,17 +42,14 @@ class RailwayDataImportServiceTest {
         private TrainRepository trainRepository;
 
         @Mock
-        private TrainScheduleRepository trainScheduleRepository;
-
-        @Mock
         private CacheManager cacheManager;
 
         @Mock
-        private EntityManager entityManager;
+        private RailwayImportBatchService batchService;
 
         private RailwayDataImportService service() {
                 return new RailwayDataImportService(
-                                stationRepository, trainRepository, trainScheduleRepository, cacheManager, entityManager);
+                                stationRepository, trainRepository, cacheManager, batchService);
         }
 
         private String cleanText(String value) {

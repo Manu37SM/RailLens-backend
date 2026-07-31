@@ -119,6 +119,19 @@ public class RefreshTokenService {
                 refreshTokenRepository.deleteByUser(user);
         }
 
+        /**
+         * Hard-deletes every revoked or expired refresh token row, called
+         * daily by {@link RefreshTokenCleanupTask}. Rotation only ever sets
+         * {@code revoked = true} and never removes the old row (see class
+         * javadoc), so without this the table grows by one row on every
+         * login/refresh, forever. Returns the number of rows removed, purely
+         * for logging.
+         */
+        @Transactional
+        public int purgeRevokedOrExpired() {
+                return refreshTokenRepository.deleteRevokedOrExpired(LocalDateTime.now());
+        }
+
         private String generateRawToken() {
                 byte[] bytes = new byte[32];
                 RANDOM.nextBytes(bytes);

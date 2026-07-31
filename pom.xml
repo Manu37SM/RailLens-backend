@@ -54,7 +54,24 @@
 			separate artifact as of Flyway 10+ (split out of flyway-core) and
 			is required for Postgres support - flyway-core alone is not
 			enough.
+
+			spring-boot-starter-flyway is ALSO required, separately from
+			flyway-core - Spring Boot 4's modular autoconfiguration split
+			FlywayAutoConfiguration (now in org.springframework.boot.flyway.
+			autoconfigure) into its own starter module. Without it, Spring
+			Boot never even attempts to run Flyway: no error, no log line at
+			any level (confirmed by setting logging.level.org.flywaydb=DEBUG
+			and seeing nothing), it just silently never registers the
+			auto-configuration - the DataSource goes straight to JPA/
+			Hibernate with no migration step in between. Same category of
+			gotcha as spring-boot-starter-jackson above, a second instance of
+			Boot 4's modularization that isn't obvious from flyway-core alone
+			still being a valid, resolvable dependency.
 		-->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-flyway</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.flywaydb</groupId>
 			<artifactId>flyway-core</artifactId>

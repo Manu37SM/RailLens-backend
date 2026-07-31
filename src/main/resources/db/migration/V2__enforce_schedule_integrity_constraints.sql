@@ -1,5 +1,8 @@
 -- ============================================================================
--- WARNING - DO NOT APPLY THIS MIGRATION BLINDLY. Read this comment first.
+-- Pre-flight diagnostics (see below) run and confirmed clean 2026-07-31 -
+-- all four checks returned 0/empty. spring.flyway.target=1 has been
+-- removed from application.properties, so this now applies on next
+-- startup. Kept the original review notes below for context/history.
 -- ============================================================================
 --
 -- This migration implements the two P0 findings from

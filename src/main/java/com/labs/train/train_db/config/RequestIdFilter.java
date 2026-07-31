@@ -2,6 +2,7 @@ package com.labs.train.train_db.config;
 
 import java.io.IOException;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 import org.slf4j.MDC;
 import org.springframework.core.annotation.Order;
@@ -29,6 +30,14 @@ import jakarta.servlet.http.HttpServletResponse;
  * log aggregation/APM tool wired up yet (see PROMPT.md's "Monitoring
  * readiness" goal), so for now this is what makes grep-ing a single
  * request's log lines out of a plain text log file possible at all.
+ *
+ * The inbound header is validated, not trusted verbatim - anyone can send
+ * an arbitrary {@code X-Request-Id}, and this value flows straight into
+ * every log line via MDC and back out in the response header. An
+ * unvalidated value could contain control characters (log-line
+ * injection/spoofing forged log entries) or be made arbitrarily long
+ * (log-volume nuisance). A generated UUID is used instead whenever the
+ * inbound value doesn't look like a real correlation ID.
  */
 @Component
 @Order(0)
@@ -36,6 +45,13 @@ public class RequestIdFilter extends OncePerRequestFilter {
 
         private static final String HEADER_NAME = "X-Request-Id";
         private static final String MDC_KEY = "requestId";
+
+        // Deliberately permissive about format (proxies/load balancers vary -
+        // this isn't required to be a UUID) but bounded: letters, digits,
+        // hyphens and underscores only, 1-128 characters. Long enough for a
+        // UUID (36 chars) with headroom for other common formats, short
+        // enough that no single header can bloat every subsequent log line.
+        private static final Pattern VALID_REQUEST_ID = Pattern.compile("^[A-Za-z0-9_-]{1,128}$");
 
         @Override
         protected void doFilterInternal(
@@ -45,7 +61,7 @@ public class RequestIdFilter extends OncePerRequestFilter {
 
                 String requestId = request.getHeader(HEADER_NAME);
 
-                if (requestId == null || requestId.isBlank()) {
+                if (requestId == null || !VALID_REQUEST_ID.matcher(requestId).matches()) {
                         requestId = UUID.randomUUID().toString();
                 }
 

@@ -39,6 +39,22 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
                         HttpServletResponse response,
                         Object handler) throws Exception {
 
+                // CORS preflight (OPTIONS) requests never carry the
+                // Authorization header - the browser sends it bare on
+                // purpose, before deciding whether the real request is even
+                // allowed. Rejecting it here would fail the preflight
+                // itself, which blocks the real request client-side before
+                // it's ever sent - surfacing to the frontend as a generic
+                // "can't reach the server" network error, not a 401, making
+                // it look like the backend is down when it's actually this
+                // interceptor answering a request the browser was never
+                // going to attach credentials to. Must run before the
+                // Authorization check, not after - there's nothing to
+                // validate on a preflight.
+                if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+                        return true;
+                }
+
                 String header = request.getHeader("Authorization");
 
                 if (header == null || !header.startsWith(BEARER_PREFIX)) {

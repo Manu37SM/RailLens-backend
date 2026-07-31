@@ -64,9 +64,19 @@ public class AuthService {
 
                 User user = userRepository
                                 .findByUsernameOrEmail(request.usernameOrEmail(), request.usernameOrEmail())
-                                .orElseThrow(() -> new InvalidCredentialsException("Invalid username/email or password"));
+                                .orElseThrow(() -> {
+                                        // Only failure this solo dev has any way to notice -
+                                        // AuthRateLimitInterceptor only logs once the 10/min
+                                        // threshold is exceeded, so a slow-drip attempt that
+                                        // stays under it left zero trace before this. Logging
+                                        // the attempted identifier (not the password) is safe -
+                                        // it's the same value the client already sent.
+                                        log.warn("Failed login attempt for unknown username/email: {}", request.usernameOrEmail());
+                                        return new InvalidCredentialsException("Invalid username/email or password");
+                                });
 
                 if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+                        log.warn("Failed login attempt (wrong password) for user: {}", user.getUsername());
                         throw new InvalidCredentialsException("Invalid username/email or password");
                 }
 

@@ -1,5 +1,6 @@
 package com.labs.train.train_db.repository;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -24,4 +25,15 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
         // delete query - no @Modifying needed (that's only for @Query-backed
         // bulk operations, like revokeAllForUser above).
         void deleteByUser(User user);
+
+        // Rotation (see RefreshTokenService#rotate) only ever flips `revoked`
+        // to true, never deletes the row - so without this, the table grows
+        // by one row on every login and every refresh, forever (see the
+        // backend audit's "unbounded refresh_tokens growth" finding).
+        // Naturally-expired-but-never-used tokens (revoked = false, past
+        // expiresAt) are just as safe to remove - RefreshToken#isValid()
+        // already treats them as unusable.
+        @Modifying
+        @Query("DELETE FROM RefreshToken rt WHERE rt.revoked = true OR rt.expiresAt < :now")
+        int deleteRevokedOrExpired(@Param("now") LocalDateTime now);
 }
