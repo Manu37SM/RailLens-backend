@@ -33,11 +33,14 @@ class StationIntelligenceServiceTest {
         @Mock
         private TrainScheduleRepository trainScheduleRepository;
 
+        @Mock
+        private ScheduleSnapshotService scheduleSnapshotService;
+
         private StationIntelligenceService service() {
                 return new StationIntelligenceService(
                                 stationRepository,
                                 trainScheduleRepository,
-                                new RailwayNetworkService(trainScheduleRepository));
+                                new RailwayNetworkService(scheduleSnapshotService));
         }
 
         private static Train train(long id, String number) {
@@ -119,7 +122,7 @@ class StationIntelligenceServiceTest {
 
                 when(stationRepository.findByStationCode("B"))
                                 .thenReturn(Optional.of(b));
-                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc())
+                when(scheduleSnapshotService.getAllOrderedByTrainThenSequence())
                                 .thenReturn(allSchedules);
                 when(trainScheduleRepository.findByStation_StationCodeOrderByArrivalTime("B"))
                                 .thenReturn(List.of(s2, s5));
@@ -177,7 +180,7 @@ class StationIntelligenceServiceTest {
                 Station fresh = station("NEW1");
 
                 when(stationRepository.findByStationCode("NEW1")).thenReturn(Optional.of(fresh));
-                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()).thenReturn(List.of());
+                when(scheduleSnapshotService.getAllOrderedByTrainThenSequence()).thenReturn(List.of());
                 when(trainScheduleRepository.findByStation_StationCodeOrderByArrivalTime("NEW1"))
                                 .thenReturn(List.of());
 

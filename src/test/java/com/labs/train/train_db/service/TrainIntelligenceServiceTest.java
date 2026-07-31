@@ -27,13 +27,16 @@ class TrainIntelligenceServiceTest {
         @Mock
         private TrainScheduleRepository trainScheduleRepository;
 
+        @Mock
+        private ScheduleSnapshotService scheduleSnapshotService;
+
         private final JourneyDayCalculator journeyDayCalculator = new JourneyDayCalculator();
 
         private TrainIntelligenceService service() {
                 return new TrainIntelligenceService(
                                 trainScheduleRepository,
                                 journeyDayCalculator,
-                                new RailwayNetworkService(trainScheduleRepository));
+                                new RailwayNetworkService(scheduleSnapshotService));
         }
 
         private static Train train(long id, String number) {
@@ -100,7 +103,7 @@ class TrainIntelligenceServiceTest {
                                 schedule(t, d, 4, LocalTime.of(23, 0), null, 600));
 
                 when(trainScheduleRepository.findByTrain_TrainNumberOrderBySequenceNo("9001")).thenReturn(route);
-                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()).thenReturn(route);
+                when(scheduleSnapshotService.getAllOrderedByTrainThenSequence()).thenReturn(route);
 
                 TrainIntelligenceResponse response = service().getIntelligence("9001");
 
@@ -180,7 +183,7 @@ class TrainIntelligenceServiceTest {
                 allSchedules.addAll(route9003);
                 allSchedules.addAll(route9004);
 
-                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc())
+                when(scheduleSnapshotService.getAllOrderedByTrainThenSequence())
                                 .thenReturn(allSchedules);
 
                 TrainIntelligenceResponse response = service().getIntelligence("9001");
@@ -204,7 +207,7 @@ class TrainIntelligenceServiceTest {
                                 schedule(t, a, 3, LocalTime.of(10, 0), null, 100));
 
                 when(trainScheduleRepository.findByTrain_TrainNumberOrderBySequenceNo("9005")).thenReturn(route);
-                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()).thenReturn(route);
+                when(scheduleSnapshotService.getAllOrderedByTrainThenSequence()).thenReturn(route);
 
                 TrainIntelligenceResponse response = service().getIntelligence("9005");
 

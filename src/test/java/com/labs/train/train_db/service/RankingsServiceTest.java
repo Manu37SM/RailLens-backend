@@ -16,17 +16,16 @@ import com.labs.train.train_db.entity.Station;
 import com.labs.train.train_db.entity.Train;
 import com.labs.train.train_db.entity.TrainSchedule;
 import com.labs.train.train_db.model.RankingsResponse;
-import com.labs.train.train_db.repository.TrainScheduleRepository;
 import com.labs.train.train_db.service.network.RailwayNetworkService;
 
 @ExtendWith(MockitoExtension.class)
 class RankingsServiceTest {
 
         @Mock
-        private TrainScheduleRepository trainScheduleRepository;
+        private ScheduleSnapshotService scheduleSnapshotService;
 
         private RankingsService service() {
-                return new RankingsService(trainScheduleRepository, new RailwayNetworkService(trainScheduleRepository));
+                return new RankingsService(new RailwayNetworkService(scheduleSnapshotService), scheduleSnapshotService);
         }
 
         private static Train train(long id, String number) {
@@ -93,7 +92,7 @@ class RankingsServiceTest {
                 allSchedules.addAll(route9001);
                 allSchedules.addAll(route9002);
 
-                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()).thenReturn(allSchedules);
+                when(scheduleSnapshotService.getAllOrderedByTrainThenSequence()).thenReturn(allSchedules);
 
                 RankingsResponse response = service().getRankings();
 

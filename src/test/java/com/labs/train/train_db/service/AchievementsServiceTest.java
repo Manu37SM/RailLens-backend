@@ -27,12 +27,16 @@ class AchievementsServiceTest {
         @Mock
         private TrainScheduleRepository trainScheduleRepository;
 
+        @Mock
+        private ScheduleSnapshotService scheduleSnapshotService;
+
         private final JourneyDayCalculator journeyDayCalculator = new JourneyDayCalculator();
 
         private AchievementsService service() {
                 return new AchievementsService(
                                 trainScheduleRepository, journeyDayCalculator,
-                                new RailwayNetworkService(trainScheduleRepository));
+                                new RailwayNetworkService(scheduleSnapshotService),
+                                scheduleSnapshotService);
         }
 
         private static Train train(long id, String number) {
@@ -98,7 +102,7 @@ class AchievementsServiceTest {
                 all.addAll(route9001);
                 all.addAll(route9002);
 
-                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()).thenReturn(all);
+                when(scheduleSnapshotService.getAllOrderedByTrainThenSequence()).thenReturn(all);
                 when(trainScheduleRepository.findRouteDistancesDescending(any()))
                                 .thenReturn(List.of(new RouteDistanceProjection("9001", "Train 9001", 600)));
 

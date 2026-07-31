@@ -34,12 +34,17 @@ class StatsServiceTest {
         @Mock
         private TrainScheduleRepository trainScheduleRepository;
 
+        @Mock
+        private ScheduleSnapshotService scheduleSnapshotService;
+
         // Stateless, no dependencies of its own - safe to use the real thing
         // rather than mocking every call (see its own class javadoc).
         private final JourneyDayCalculator journeyDayCalculator = new JourneyDayCalculator();
 
         private StatsService statsService() {
-                return new StatsService(trainRepository, stationRepository, trainScheduleRepository, journeyDayCalculator);
+                return new StatsService(
+                                trainRepository, stationRepository, trainScheduleRepository,
+                                journeyDayCalculator, scheduleSnapshotService);
         }
 
         private static TrainSchedule schedule(
@@ -83,7 +88,7 @@ class StatsServiceTest {
                 when(trainScheduleRepository.findRouteDistancesDescending(any())).thenReturn(List.of(longest));
                 when(trainScheduleRepository.findRouteDistancesAscending(any())).thenReturn(List.of(shortest));
                 when(trainScheduleRepository.findBusiestStations(any())).thenReturn(List.of(busiest));
-                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()).thenReturn(List.of());
+                when(scheduleSnapshotService.getAllOrderedByTrainThenSequence()).thenReturn(List.of());
 
                 StatsResponse response = statsService().getStats();
 
@@ -105,7 +110,7 @@ class StatsServiceTest {
                 when(trainScheduleRepository.findRouteDistancesDescending(any())).thenReturn(List.of());
                 when(trainScheduleRepository.findRouteDistancesAscending(any())).thenReturn(List.of());
                 when(trainScheduleRepository.findBusiestStations(any())).thenReturn(List.of());
-                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()).thenReturn(List.of());
+                when(scheduleSnapshotService.getAllOrderedByTrainThenSequence()).thenReturn(List.of());
 
                 StatsResponse response = statsService().getStats();
 
@@ -145,7 +150,7 @@ class StatsServiceTest {
                 TrainSchedule incompleteStart = schedule(incomplete, a, 1, null, LocalTime.of(9, 0), 0);
                 TrainSchedule incompleteEnd = schedule(incomplete, b, 2, null, null, 60);
 
-                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc())
+                when(scheduleSnapshotService.getAllOrderedByTrainThenSequence())
                                 .thenReturn(List.of(
                                                 fastStart, fastEnd,
                                                 slowStart, slowEnd,

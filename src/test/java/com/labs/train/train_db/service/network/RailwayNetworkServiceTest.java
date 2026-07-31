@@ -16,16 +16,16 @@ import com.labs.train.train_db.entity.Station;
 import com.labs.train.train_db.entity.Train;
 import com.labs.train.train_db.entity.TrainSchedule;
 import com.labs.train.train_db.model.NetworkStatsResponse;
-import com.labs.train.train_db.repository.TrainScheduleRepository;
+import com.labs.train.train_db.service.ScheduleSnapshotService;
 
 @ExtendWith(MockitoExtension.class)
 class RailwayNetworkServiceTest {
 
         @Mock
-        private TrainScheduleRepository trainScheduleRepository;
+        private ScheduleSnapshotService scheduleSnapshotService;
 
         private RailwayNetworkService service() {
-                return new RailwayNetworkService(trainScheduleRepository);
+                return new RailwayNetworkService(scheduleSnapshotService);
         }
 
         private static Train train(long id, String number) {
@@ -80,7 +80,7 @@ class RailwayNetworkServiceTest {
                                 schedule(t, d, 4, LocalTime.of(7, 30), LocalTime.of(7, 35)),
                                 schedule(t, e, 5, LocalTime.of(8, 0), null));
 
-                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()).thenReturn(route);
+                when(scheduleSnapshotService.getAllOrderedByTrainThenSequence()).thenReturn(route);
 
                 RailwayNetworkSnapshot snapshot = service().buildSnapshot();
 
@@ -124,7 +124,7 @@ class RailwayNetworkServiceTest {
                                 schedule(t, b, 2, LocalTime.of(6, 30), LocalTime.of(6, 40)),
                                 schedule(t, c, 3, LocalTime.of(7, 0), null));
 
-                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()).thenReturn(route);
+                when(scheduleSnapshotService.getAllOrderedByTrainThenSequence()).thenReturn(route);
 
                 RailwayNetworkSnapshot snapshot = service().buildSnapshot();
 
@@ -155,7 +155,7 @@ class RailwayNetworkServiceTest {
                                 schedule(second, a, 1, null, LocalTime.of(9, 0)),
                                 schedule(second, b, 2, LocalTime.of(9, 30), null));
 
-                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()).thenReturn(route);
+                when(scheduleSnapshotService.getAllOrderedByTrainThenSequence()).thenReturn(route);
 
                 RailwayNetworkSnapshot snapshot = service().buildSnapshot();
 
@@ -181,7 +181,7 @@ class RailwayNetworkServiceTest {
                                 schedule(t, d, 4, LocalTime.of(7, 30), LocalTime.of(7, 35)),
                                 schedule(t, e, 5, LocalTime.of(8, 0), null));
 
-                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()).thenReturn(route);
+                when(scheduleSnapshotService.getAllOrderedByTrainThenSequence()).thenReturn(route);
 
                 NetworkStatsResponse stats = service().getNetworkStats();
 
@@ -220,7 +220,7 @@ class RailwayNetworkServiceTest {
                                 schedule(large, q, 2, LocalTime.of(8, 30), LocalTime.of(8, 35)),
                                 schedule(large, r, 3, LocalTime.of(9, 0), null));
 
-                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()).thenReturn(route);
+                when(scheduleSnapshotService.getAllOrderedByTrainThenSequence()).thenReturn(route);
 
                 RailwayNetworkSnapshot snapshot = service().buildSnapshot();
 

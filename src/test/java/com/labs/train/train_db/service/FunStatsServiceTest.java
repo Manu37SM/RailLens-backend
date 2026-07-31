@@ -16,7 +16,6 @@ import com.labs.train.train_db.entity.Train;
 import com.labs.train.train_db.entity.TrainSchedule;
 import com.labs.train.train_db.model.FunStatsResponse;
 import com.labs.train.train_db.repository.StationRepository;
-import com.labs.train.train_db.repository.TrainScheduleRepository;
 
 @ExtendWith(MockitoExtension.class)
 class FunStatsServiceTest {
@@ -25,10 +24,10 @@ class FunStatsServiceTest {
         private StationRepository stationRepository;
 
         @Mock
-        private TrainScheduleRepository trainScheduleRepository;
+        private ScheduleSnapshotService scheduleSnapshotService;
 
         private FunStatsService service() {
-                return new FunStatsService(stationRepository, trainScheduleRepository);
+                return new FunStatsService(stationRepository, scheduleSnapshotService);
         }
 
         private static Station station(String code, String name) {
@@ -66,7 +65,7 @@ class FunStatsServiceTest {
                 Station d = station("A1A", "Halt");
 
                 when(stationRepository.findAll()).thenReturn(List.of(a, b, c, d));
-                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()).thenReturn(List.of());
+                when(scheduleSnapshotService.getAllOrderedByTrainThenSequence()).thenReturn(List.of());
 
                 FunStatsResponse response = service().getFunStats();
 
@@ -117,7 +116,7 @@ class FunStatsServiceTest {
                 all.addAll(smallRoute);
                 all.addAll(bigRoute);
 
-                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()).thenReturn(all);
+                when(scheduleSnapshotService.getAllOrderedByTrainThenSequence()).thenReturn(all);
 
                 FunStatsResponse response = service().getFunStats();
 

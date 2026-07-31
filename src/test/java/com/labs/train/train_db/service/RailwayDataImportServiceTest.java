@@ -14,6 +14,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.labs.train.train_db.repository.StationRepository;
 import com.labs.train.train_db.repository.TrainRepository;
 import com.labs.train.train_db.repository.TrainScheduleRepository;
+import jakarta.persistence.EntityManager;
 import org.springframework.cache.CacheManager;
 
 /**
@@ -46,9 +47,12 @@ class RailwayDataImportServiceTest {
         @Mock
         private CacheManager cacheManager;
 
+        @Mock
+        private EntityManager entityManager;
+
         private RailwayDataImportService service() {
                 return new RailwayDataImportService(
-                                stationRepository, trainRepository, trainScheduleRepository, cacheManager);
+                                stationRepository, trainRepository, trainScheduleRepository, cacheManager, entityManager);
         }
 
         private String cleanText(String value) {
