@@ -206,7 +206,13 @@ public class RailwayDataImportService {
         String trainNo = cleanText(record.get("Train No"));
         String trainName = cleanText(record.get("Train Name"));
 
-        Integer sequenceNo = Integer.parseInt(cleanText(record.get("SEQ")));
+        // SEQ drives stop ordering, so unlike Distance a missing/unparseable value is a
+        // hard failure rather than falling back to null. Still tolerant of a trailing
+        // ".0" (e.g. "4.0"), same as Distance, since both come from the same source data.
+        Integer sequenceNo = parseInteger(cleanText(record.get("SEQ")));
+        if (sequenceNo == null) {
+            throw new IllegalArgumentException("Missing or invalid SEQ value in row: " + record);
+        }
 
         String stationCode = cleanText(record.get("Station Code"));
         String stationName = cleanText(record.get("Station Name"));
@@ -271,8 +277,13 @@ public class RailwayDataImportService {
             return null;
         }
 
+        // Some source CSVs include seconds (e.g. "18:05:00") — strip that part before
+        // parsing, so we always end up with plain 24-hour H:mm. Handles both single-
+        // and double-digit hours ("8:05:00" and "18:05:00").
+        String trimmed = value.replaceFirst(":\\d{2}$", "");
+
         try {
-            return LocalTime.parse(value, TIME_FORMATTER);
+            return LocalTime.parse(trimmed, TIME_FORMATTER);
         } catch (Exception e) {
             log.warn("Invalid time: {}", value);
             return null;
@@ -283,7 +294,14 @@ public class RailwayDataImportService {
         if (value == null || value.isBlank() || value.equalsIgnoreCase("NA")) {
             return null;
         }
-        return Integer.parseInt(value);
+        try {
+            // Some source CSVs write whole numbers with a trailing decimal (e.g. "245.0").
+            // Parse as a double and round, rather than failing on the decimal point.
+            return (int) Math.round(Double.parseDouble(value));
+        } catch (NumberFormatException e) {
+            log.warn("Invalid integer: {}", value);
+            return null;
+        }
     }
 
     private String cleanText(String value) {
