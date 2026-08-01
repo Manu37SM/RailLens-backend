@@ -49,8 +49,17 @@ class RailwayImportBatchServiceTest {
         @Mock
         private TrainScheduleRepository trainScheduleRepository;
 
+        // RailwayImportBatchService now only depends on RailwayImportRowService
+        // (see that class's javadoc for why the per-row work moved there) - the
+        // repository mocks are wired into a real RailwayImportRowService
+        // instance so these tests still exercise the actual persistence logic,
+        // not a second layer of mocking. @Transactional has no effect without a
+        // Spring context, so constructing it directly here is fine for a plain
+        // Mockito unit test.
         private RailwayImportBatchService service() {
-                return new RailwayImportBatchService(stationRepository, trainRepository, trainScheduleRepository);
+                RailwayImportRowService rowService = new RailwayImportRowService(
+                                stationRepository, trainRepository, trainScheduleRepository);
+                return new RailwayImportBatchService(rowService);
         }
 
         private ParsedRow row(String trainNo, int seq, String stationCode) {

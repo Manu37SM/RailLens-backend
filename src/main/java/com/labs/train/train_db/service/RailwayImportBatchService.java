@@ -10,10 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.labs.train.train_db.entity.Station;
 import com.labs.train.train_db.entity.Train;
-import com.labs.train.train_db.entity.TrainSchedule;
-import com.labs.train.train_db.repository.StationRepository;
-import com.labs.train.train_db.repository.TrainRepository;
-import com.labs.train.train_db.repository.TrainScheduleRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,15 +41,20 @@ import lombok.extern.slf4j.Slf4j;
  * {@code RailwayDataImportService} - {@code @Transactional} only takes
  * effect through Spring's proxy, which self-invocation (a method calling
  * another method on {@code this}) bypasses entirely.
+ *
+ * Each row's actual persistence is further delegated to {@link
+ * RailwayImportRowService#saveRow}, which runs in its own {@code
+ * Propagation.NESTED} transaction (a JDBC savepoint inside this batch's
+ * transaction) - see that class's javadoc for why: without it, one row's
+ * constraint violation aborted the whole Postgres transaction and silently
+ * failed every other row in the same batch too.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class RailwayImportBatchService {
 
-        private final StationRepository stationRepository;
-        private final TrainRepository trainRepository;
-        private final TrainScheduleRepository trainScheduleRepository;
+        private final RailwayImportRowService rowService;
 
         public record BatchImportResult(int succeeded, int failed) {
         }
@@ -81,68 +82,29 @@ public class RailwayImportBatchService {
 
                 for (RailwayDataImportService.ParsedRow row : rows) {
 
+                        // Decided here, not inside the NESTED transaction below: if
+                        // this row's save fails and rolls back, processedTrains must
+                        // NOT have already been marked for this train, or the delete
+                        // (which rolled back along with everything else in that
+                        // savepoint) would never be retried on a later row - see
+                        // RailwayImportRowService's javadoc.
+                        boolean deleteExistingSchedule = !processedTrains.contains(row.trainNo());
+
                         try {
 
-                                // Station
-                                Station station = stationCache.get(row.stationCode());
+                                RailwayImportRowService.RowSaveResult result = rowService.saveRow(
+                                                row, stationCache, trainCache, deleteExistingSchedule);
 
-                                if (station == null) {
+                                // Cache/bookkeeping writes only happen here, after saveRow
+                                // has returned successfully - see that method's javadoc for
+                                // why writing them from inside its own (possibly
+                                // rolled-back) transaction would be unsafe.
+                                stationCache.put(row.stationCode(), result.station());
+                                trainCache.put(row.trainNo(), result.train());
 
-                                        station = new Station();
-                                        station.setStationCode(row.stationCode());
-                                        station.setStationName(row.stationName());
-
-                                        station = stationRepository.save(station);
-
-                                        stationCache.put(row.stationCode(), station);
-
-                                } else if (!row.stationName().equals(station.getStationName())) {
-
-                                        station.setStationName(row.stationName());
-                                        station = stationRepository.save(station);
-                                        stationCache.put(row.stationCode(), station);
+                                if (deleteExistingSchedule) {
+                                        processedTrains.add(row.trainNo());
                                 }
-
-                                // Train
-                                Train train = trainCache.get(row.trainNo());
-
-                                if (train == null) {
-
-                                        train = new Train();
-                                        train.setTrainNumber(row.trainNo());
-                                        train.setTrainName(row.trainName());
-
-                                        train = trainRepository.save(train);
-
-                                        trainCache.put(row.trainNo(), train);
-
-                                } else if (!row.trainName().equals(train.getTrainName())) {
-
-                                        train.setTrainName(row.trainName());
-                                        train = trainRepository.save(train);
-                                        trainCache.put(row.trainNo(), train);
-                                }
-
-                                // Delete schedule only for existing trains, only once -
-                                // processedTrains is shared across every batch call, so
-                                // this still fires exactly once per train regardless of
-                                // which batch that train's first row lands in.
-                                if (processedTrains.add(row.trainNo())) {
-                                        trainScheduleRepository.deleteByTrain(train);
-                                }
-
-                                // Schedule
-                                TrainSchedule schedule = new TrainSchedule();
-
-                                schedule.setTrain(train);
-                                schedule.setStation(station);
-
-                                schedule.setSequenceNo(row.sequenceNo());
-                                schedule.setArrivalTime(row.arrivalTime());
-                                schedule.setDepartureTime(row.departureTime());
-                                schedule.setDistance(row.distance());
-
-                                trainScheduleRepository.save(schedule);
 
                                 succeeded++;
 
