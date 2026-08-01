@@ -278,9 +278,13 @@ public class RailwayDataImportService {
         }
 
         // Some source CSVs include seconds (e.g. "18:05:00") — strip that part before
-        // parsing, so we always end up with plain 24-hour H:mm. Handles both single-
-        // and double-digit hours ("8:05:00" and "18:05:00").
-        String trimmed = value.replaceFirst(":\\d{2}$", "");
+        // parsing, so we always end up with plain 24-hour H:mm. The pattern only
+        // matches when there are two colon-separated groups after the hour (i.e.
+        // an actual trailing ":ss"), so a plain "8:05" or "18:05" is left alone -
+        // an earlier, looser version of this regex (":\d{2}$") also matched plain
+        // H:mm's own minutes and silently truncated "8:05" down to "8", which
+        // then failed to parse. Handles both single- and double-digit hours.
+        String trimmed = value.replaceFirst("^(\\d{1,2}:\\d{2}):\\d{2}$", "$1");
 
         try {
             return LocalTime.parse(trimmed, TIME_FORMATTER);

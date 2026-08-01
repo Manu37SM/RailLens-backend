@@ -1,7 +1,6 @@
 package com.labs.train.train_db.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.LocalTime;
 
@@ -123,15 +122,19 @@ class RailwayDataImportServiceTest {
         }
 
         @Test
-        void parseIntegerThrowsForGenuinelyMalformedNumbers() {
-                // Unlike parseTime, parseInteger has no try/catch around
-                // Integer.parseInt - a malformed (non-blank, non-"NA") number
-                // propagates up to the per-row catch block in importCsv(),
-                // which counts it as a failed row rather than crashing the
-                // whole import. Asserting this documents that behavior so a
-                // future change that silently swallows it here would be
-                // caught by this test.
-                assertThatThrownBy(() -> parseInteger("not-a-number"))
-                                .isInstanceOf(NumberFormatException.class);
+        void parseIntegerReturnsNullRatherThanThrowingForGarbageInput() {
+                // parseInteger now fails soft, the same as parseTime - a
+                // malformed (non-blank, non-"NA") value logs a warning and
+                // returns null rather than propagating a NumberFormatException,
+                // so one bad Distance cell doesn't need special-case handling
+                // by importCsv()'s per-row catch block.
+                assertThat(parseInteger("not-a-number")).isNull();
+        }
+
+        @Test
+        void parseIntegerParsesWholeNumbersWrittenWithATrailingDecimal() {
+                // Some source CSVs write whole numbers as e.g. "245.0" - see
+                // the 2026-08-01 import failure this was added for.
+                assertThat(parseInteger("245.0")).isEqualTo(245);
         }
 }
