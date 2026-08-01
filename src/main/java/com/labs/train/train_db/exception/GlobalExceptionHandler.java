@@ -13,6 +13,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import com.labs.train.train_db.model.ApiErrorResponse;
 
@@ -222,6 +223,29 @@ public class GlobalExceptionHandler {
                                 "Parameter '" + ex.getName() + "' has an invalid value");
 
                 return ResponseEntity.badRequest().body(response);
+        }
+
+        /**
+         * Thrown by Spring MVC itself when no controller mapping (and no
+         * static resource) matches the request path - e.g. a browser or
+         * uptime check hitting {@code GET /} on this API-only backend, which
+         * has no root page. Without this handler it fell through to the
+         * catch-all below: logged as a server ERROR with a full stack trace,
+         * and returned to the caller as a 500 - both wrong for what is just
+         * "no route here." Deliberately not logged as an error; an
+         * unmapped path is routine, not a server failure.
+         */
+        @ExceptionHandler(NoResourceFoundException.class)
+        public ResponseEntity<ApiErrorResponse> handleNoResourceFound(
+                        NoResourceFoundException ex) {
+
+                ApiErrorResponse response = new ApiErrorResponse(
+                                LocalDateTime.now(),
+                                HttpStatus.NOT_FOUND.value(),
+                                "The requested endpoint does not exist");
+
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                                .body(response);
         }
 
         /**
