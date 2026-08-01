@@ -25,10 +25,23 @@ services:
     envVars:
       # Render injects PORT automatically; the Dockerfile's ENTRYPOINT
       # already reads it.
-      - key: SPRING_DATASOURCE_URL
+      # Render's "connectionString" property returns a plain postgres://
+      # URI, not a JDBC URL - Spring's DataSourceProperties requires
+      # "jdbc:postgresql://...". Pull the pieces separately instead and
+      # let the Dockerfile ENTRYPOINT assemble the actual JDBC URL at
+      # startup (same pattern it already uses for ${PORT}).
+      - key: DB_HOST
         fromDatabase:
           name: raillens-db
-          property: connectionString
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: raillens-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: raillens-db
+          property: database
       - key: SPRING_DATASOURCE_USERNAME
         fromDatabase:
           name: raillens-db

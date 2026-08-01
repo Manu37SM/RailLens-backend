@@ -33,4 +33,8 @@ COPY --from=build /app/target/*.jar app.jar
 ENV PORT=8080
 EXPOSE 8080
 
-ENTRYPOINT ["sh", "-c", "java -jar app.jar --server.port=${PORT}"]
+# SPRING_DATASOURCE_URL is assembled here rather than set directly by Render,
+# because Render's Postgres "connectionString" is a plain postgres:// URI,
+# not the jdbc:postgresql:// form Spring's DataSourceProperties requires.
+# DB_HOST/DB_PORT/DB_NAME come from render.yaml's fromDatabase env vars.
+ENTRYPOINT ["sh", "-c", "java -jar app.jar --server.port=${PORT} --spring.datasource.url=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}"]
