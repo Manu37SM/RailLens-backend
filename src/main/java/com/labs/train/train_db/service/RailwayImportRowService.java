@@ -16,11 +16,24 @@ import com.labs.train.train_db.repository.TrainScheduleRepository;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Persists exactly one already-parsed CSV row, in its own {@code
- * Propagation.NESTED} transaction (a JDBC savepoint inside the caller's
- * {@code RailwayImportBatchService} batch transaction - see {@link
- * com.labs.train.train_db.config.TransactionConfig} for why NESTED had to
- * be explicitly enabled).
+ * Persists exactly one already-parsed CSV row, in its own independent
+ * {@code Propagation.REQUIRES_NEW} transaction.
+ *
+ * This was originally attempted with {@code Propagation.NESTED} (a JDBC
+ * savepoint inside the caller's {@code RailwayImportBatchService} batch
+ * transaction) instead - that failed in production with {@code
+ * NestedTransactionNotSupportedException: JpaDialect does not support
+ * savepoints}. Spring's {@code JpaTransactionManager} can only back NESTED
+ * with a real JDBC savepoint if the configured {@code JpaDialect} exposes
+ * the underlying {@code Connection}, and the Hibernate 7 dialect this
+ * project runs on doesn't. REQUIRES_NEW has no such dependency - it's a
+ * fully separate transaction (and, since {@code TrainSchedule.id} is
+ * {@code GenerationType.IDENTITY}, a fully separate round trip per row
+ * either way) - at the cost of one commit per row (~235k for the full CSV)
+ * instead of one per {@code AppConstants.IMPORT_BATCH_SIZE}-row batch.
+ * Given NESTED simply doesn't work on this stack, that's not an optional
+ * trade-off being weighed here, just the actual cost of the only viable
+ * fix.
  *
  * Split out of {@code RailwayImportBatchService} for the same reason {@code
  * RailwayImportBatchService} itself was split out of {@code
@@ -34,9 +47,9 @@ import lombok.RequiredArgsConstructor;
  * the whole batch as one transaction, one bad row was silently failing
  * every other row after it in that batch too - see the 2026-08-01 import
  * incident where a single failure at row ~156 cascaded through the rest of
- * its batch. Each row now gets its own savepoint via NESTED: a failure here
- * rolls back only this row, and the batch's outer transaction (and every
- * other row in it) is unaffected.
+ * its batch. Each row now gets its own transaction: a failure here rolls
+ * back only this row, and every other row (in this batch or otherwise) is
+ * unaffected.
  *
  * {@code stationCache}/{@code trainCache} are read here but deliberately
  * never written here - see {@link #saveRow}'s javadoc.
@@ -64,16 +77,16 @@ public class RailwayImportRowService {
      * {@code stationCache}/{@code trainCache} nor {@code processedTrains}
      * (see {@code RailwayImportBatchService}) are written to here, for the
      * same reason: they're plain in-memory collections, not part of this (or
-     * any) transaction. If this method's NESTED transaction rolls back after
-     * having inserted a new station/train but before the schedule insert,
-     * writing that station/train into the shared cache here would leave a
-     * "phantom" entry behind - one whose database row was rolled back, but
-     * that a later row could still read from the cache and try to build a
-     * foreign key against. The caller only commits cache/bookkeeping writes
-     * once this method has returned successfully, keeping them consistent
-     * with what's actually durable in the database.
+     * any) transaction. If this method's transaction rolls back after having
+     * inserted a new station/train but before the schedule insert, writing
+     * that station/train into the shared cache here would leave a "phantom"
+     * entry behind - one whose database row was rolled back, but that a
+     * later row could still read from the cache and try to build a foreign
+     * key against. The caller only commits cache/bookkeeping writes once
+     * this method has returned successfully, keeping them consistent with
+     * what's actually durable in the database.
      */
-    @Transactional(propagation = Propagation.NESTED)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public RowSaveResult saveRow(
                     RailwayDataImportService.ParsedRow row,
                     Map<String, Station> stationCache,
