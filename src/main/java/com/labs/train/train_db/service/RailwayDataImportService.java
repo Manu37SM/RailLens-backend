@@ -139,7 +139,11 @@ public class RailwayDataImportService {
 
                 } catch (Exception ex) {
                     failedCount++;
-                    log.error("Failed to parse row: {}", record.toString(), ex);
+                    // WARN with message only, not a full stack trace - same
+                    // reasoning as RailwayImportBatchService's per-row catch:
+                    // an expected, already-counted failure, not worth a full
+                    // trace multiplied across every bad row in a 235k-row CSV.
+                    log.warn("Failed to parse row {}: {}", record.toString(), ex.toString());
                     continue;
                 }
 

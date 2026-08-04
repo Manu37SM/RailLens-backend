@@ -15,9 +15,13 @@ import lombok.RequiredArgsConstructor;
 /**
  * Single shared, cached source for "every schedule row, ordered by train
  * then sequence" - the ~300k-row full-table load that StatsService,
- * RankingsService, FunStatsService, AchievementsService, and
- * RailwayNetworkService each used to call independently via
- * {@code TrainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()}.
+ * RankingsService, FunStatsService, AchievementsService,
+ * RailwayNetworkService, and TrainSummaryIndex each used to call
+ * independently via
+ * {@code TrainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()}
+ * (TrainSummaryIndex was missed in the original consolidation - fixed
+ * 2026-08-03 after it contributed to an OutOfMemoryError under a cold-start
+ * traffic burst).
  *
  * Each of those was individually reasonable (one linear pass, each behind
  * its own @Cacheable endpoint), but none of them shared the underlying data -

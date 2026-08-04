@@ -92,7 +92,17 @@ public class RailwayImportBatchService {
 
                         } catch (Exception ex) {
                                 failed++;
-                                log.error("Failed to import row: {}", row.rawRecord(), ex);
+
+                                // WARN with just the exception's type/message, not the full
+                                // stack trace (previously passed ex as the last arg, which
+                                // SLF4J expands into a full trace per failed row - during a
+                                // large CSV import with many failures, that made Render's log
+                                // viewer nearly unusable, per the 2026-08-03 report). A bad
+                                // row here is an expected, already-handled outcome (see this
+                                // method's own tests), not the kind of unexpected failure a
+                                // full trace is for - full detail is still one click away via
+                                // Render's log search on the record number if ever needed.
+                                log.warn("Failed to import row {}: {}", row.rawRecord(), ex.toString());
                         }
                 }
 

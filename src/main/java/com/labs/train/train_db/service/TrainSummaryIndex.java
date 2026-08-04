@@ -13,27 +13,38 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.labs.train.train_db.config.CacheConfig;
 import com.labs.train.train_db.entity.TrainSchedule;
-import com.labs.train.train_db.repository.TrainScheduleRepository;
 
 import lombok.RequiredArgsConstructor;
 
 /**
  * Every train's stop set, distance, journey duration, and halt count, built
- * once from a single full-table scan - backs SmartSearchService's
- * filtering. A separate bean (rather than a private method on
- * SmartSearchService) specifically so {@link #buildIndex()}'s
- * {@code @Cacheable} actually takes effect: Spring's caching is proxy-
- * based, so a method calling its own {@code @Cacheable} method
- * (self-invocation) bypasses the proxy and silently never caches - the same
- * reason RailwayNetworkService.buildSnapshot() is its own bean rather than
- * a private method other services call internally.
+ * once from the shared {@link ScheduleSnapshotService} full-table snapshot -
+ * backs SmartSearchService's filtering. A separate bean (rather than a
+ * private method on SmartSearchService) specifically so {@link
+ * #buildIndex()}'s {@code @Cacheable} actually takes effect: Spring's
+ * caching is proxy-based, so a method calling its own {@code @Cacheable}
+ * method (self-invocation) bypasses the proxy and silently never caches -
+ * the same reason RailwayNetworkService.buildSnapshot() is its own bean
+ * rather than a private method other services call internally.
+ *
+ * Previously called {@code TrainScheduleRepository
+ * .findAllByOrderByTrain_IdAscSequenceNoAsc()} directly instead of going
+ * through {@code ScheduleSnapshotService} - an independent full ~300k-row
+ * load that {@code ScheduleSnapshotService}'s own javadoc describes
+ * consolidating for every OTHER "Railway Intelligence" service, but this
+ * one was missed. On Render's free tier, that meant a cold-start traffic
+ * burst touching both Smart Search and any of Stats/Rankings/FunStats/
+ * Achievements/Network could hold two independent ~300k-entity copies of
+ * the schedule table in memory at once - a real contributor to the
+ * 2026-08-03 java.lang.OutOfMemoryError incident. Now shares the same
+ * cached snapshot as everything else.
  */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 class TrainSummaryIndex {
 
-        private final TrainScheduleRepository trainScheduleRepository;
+        private final ScheduleSnapshotService scheduleSnapshotService;
         private final JourneyDayCalculator journeyDayCalculator;
 
         record TrainSummary(
@@ -50,8 +61,8 @@ class TrainSummaryIndex {
         @Cacheable(cacheNames = CacheConfig.SEARCH_INDEX_CACHE, key = "'trainSummaries'")
         List<TrainSummary> buildIndex() {
 
-                Map<Long, List<TrainSchedule>> schedulesByTrainId = trainScheduleRepository
-                                .findAllByOrderByTrain_IdAscSequenceNoAsc()
+                Map<Long, List<TrainSchedule>> schedulesByTrainId = scheduleSnapshotService
+                                .getAllOrderedByTrainThenSequence()
                                 .stream()
                                 .collect(Collectors.groupingBy(schedule -> schedule.getTrain().getId()));
 
