@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.HexFormat;
 
+import org.hibernate.Hibernate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -80,6 +81,16 @@ public class RefreshTokenService {
                 refreshTokenRepository.save(existing);
 
                 User user = existing.getUser();
+
+                // Force this lazy proxy to load its fields now, while this
+                // method's transaction (and its Hibernate session) is still
+                // open. Without this, the proxy escapes into RotatedToken
+                // uninitialized, and the first field access (AuthService
+                // calling user.getUsername() to mint a JWT) throws
+                // LazyInitializationException once this transaction has
+                // already committed and closed the session.
+                Hibernate.initialize(user);
+
                 String newRawToken = issue(user);
 
                 return new RotatedToken(user, newRawToken);

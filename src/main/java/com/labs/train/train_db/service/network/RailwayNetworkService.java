@@ -134,7 +134,15 @@ public class RailwayNetworkService {
                                 stations, totalTrains, analysis.components, analysis.largestComponentIndex, analysis.diameter);
         }
 
-        private static final int TOP_CENTRAL_STATIONS = 10;
+        // Raised from 10 - the free Render instance this was tuned for is
+        // gone (now on the Standard plan), and the frontend's
+        // NetworkStatsGrid already defensively slices to 25, so this was
+        // the tighter of the two caps in practice. This ranking list is the
+        // only place buildSnapshot()'s output is truncated at all - see
+        // getNetworkStats() below, everything else (totalStations,
+        // totalTrains, totalEdges, routeDensity, connectedComponents,
+        // networkDiameter) is already computed over the full dataset.
+        private static final int TOP_CENTRAL_STATIONS = 25;
 
         /**
          * Network-wide summary (FEATURE.md's "Railway Network" section) -

@@ -110,7 +110,12 @@ public class RailwayImportBatchService {
                         // class's javadoc for why this is raw JDBC rather than Spring's
                         // Propagation.NESTED (unsupported on this stack) or a second
                         // REQUIRES_NEW transaction (correct, but too slow at CSV scale).
-                        Savepoint savepoint = session.doReturningWork(Connection::setSavepoint);
+                        // Explicit lambda rather than Connection::setSavepoint - avoids
+                        // the JDT null analyzer's "unchecked conversion for the
+                        // receiver" warning on the method-reference form (same
+                        // reasoning as the other fixes in this codebase); same
+                        // behavior either way.
+                        Savepoint savepoint = session.doReturningWork(connection -> connection.setSavepoint());
 
                         // Decided here, not after the fact: if this row's save fails and
                         // rolls back, processedTrains must NOT have already been marked
