@@ -37,4 +37,18 @@ EXPOSE 8080
 # because Render's Postgres "connectionString" is a plain postgres:// URI,
 # not the jdbc:postgresql:// form Spring's DataSourceProperties requires.
 # DB_HOST/DB_PORT/DB_NAME come from render.yaml's fromDatabase env vars.
-ENTRYPOINT ["sh", "-c", "java -jar app.jar --server.port=${PORT} --spring.datasource.url=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}"]
+#
+# -XX:MaxRAMPercentage=75 - without an explicit heap flag, the JVM's default
+# ergonomics cap the heap at ~25% of container memory (~128MB on Render's
+# free 512MB plan). That's too little headroom once Tomcat, HikariCP, and
+# the Caffeine caches (see CacheConfig) are also holding data, and is what
+# caused the 2026-08-05 production OutOfMemoryError under a concurrent
+# request burst. 75% leaves ~25% (~128MB) for thread stacks, metaspace, and
+# JIT/GC overhead outside the heap - Temurin detects the container's cgroup
+# memory limit correctly, so this scales automatically if the Render plan
+# is ever upgraded to more RAM.
+# -XX:+ExitOnOutOfMemoryError - if the heap is ever exhausted again, exit
+# the process immediately so Render's health check fails fast and restarts
+# a clean instance, instead of limping along in a half-broken state serving
+# intermittent 500s.
+ENTRYPOINT ["sh", "-c", "java -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -jar app.jar --server.port=${PORT} --spring.datasource.url=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}"]
