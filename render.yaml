@@ -61,7 +61,7 @@ services:
       # should apply the same everywhere, so it's a plain value here
       # rather than sync: false/generateValue.
       - key: SPRING_JPA_OPEN_IN_VIEW
-        value: false
+        value: "false"
       # Secrets - generateValue makes Render create a random value on
       # first deploy so nothing sensitive has to be typed into this file.
       # raillens.jwt.secret specifically needs >= 32 bytes (see JwtService)
