@@ -50,6 +50,18 @@ services:
         fromDatabase:
           name: raillens-db
           property: password
+      # Spring Boot defaults this to true, which binds one Hibernate
+      # session to the entire HTTP request for its full duration. Fine for
+      # a normal request, but a real problem for the long-running CSV
+      # import (POST /api/v1/admin/import): the 2026-08-04 production
+      # import showed each successive 10k-row chunk taking noticeably
+      # longer than the last, consistent with entities accumulating in
+      # that one request-long session for the whole multi-hour run rather
+      # than being released. Not a secret, just a non-default value that
+      # should apply the same everywhere, so it's a plain value here
+      # rather than sync: false/generateValue.
+      - key: SPRING_JPA_OPEN_IN_VIEW
+        value: false
       # Secrets - generateValue makes Render create a random value on
       # first deploy so nothing sensitive has to be typed into this file.
       # raillens.jwt.secret specifically needs >= 32 bytes (see JwtService)

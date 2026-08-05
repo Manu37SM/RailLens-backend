@@ -10,6 +10,13 @@ spring.jpa.hibernate.ddl-auto=validate
 spring.jpa.show-sql=true
 spring.jpa.properties.hibernate.format_sql=true
 
+# Off, not Spring Boot's default of true - "true" binds one Hibernate
+# session to the whole HTTP request for its full duration, which is a real
+# problem for the long-running CSV import endpoint (see render.yaml's own
+# copy of this setting for the production incident this fixes). Off
+# everywhere for consistency between local dev and prod, not just prod.
+spring.jpa.open-in-view=false
+
 # See V1__baseline_schema.sql's header comment: lets Flyway adopt an
 # already-existing (pre-Flyway) database without trying to recreate
 # tables that are already there.
