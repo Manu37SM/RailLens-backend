@@ -261,4 +261,41 @@
 		</plugins>
 	</build>
 
+	<!--
+		Opt-in, not run on every `mvn package`/`mvn install` - see
+		.github/dependabot.yml for the always-on scanning this project
+		actually relies on day to day. dependency-check-maven needs to
+		download/update a large NVD CVE database on first run (and, since
+		the NVD API rate-limits unauthenticated callers hard, is much
+		slower/flakier without an NVD_API_KEY - see
+		https://nvd.nist.gov/developers/request-an-api-key), which is a bad
+		fit for a solo-dev's normal inner-loop build. Run it explicitly
+		when wanted:
+
+			mvn -Psecurity-scan verify
+
+		HTML report lands in target/dependency-check-report.html.
+	-->
+	<profiles>
+		<profile>
+			<id>security-scan</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.owasp</groupId>
+						<artifactId>dependency-check-maven</artifactId>
+						<version>10.0.4</version>
+						<executions>
+							<execution>
+								<goals>
+									<goal>check</goal>
+								</goals>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
+
 </project>

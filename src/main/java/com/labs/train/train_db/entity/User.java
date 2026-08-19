@@ -41,6 +41,16 @@ public class User {
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    // Account lockout (see AuthService#login and
+    // V4__add_account_lockout_fields.sql). failedLoginAttempts resets to 0
+    // on any successful login; lockedUntil is null unless the account is
+    // currently locked out, in which case login is rejected until that
+    // timestamp passes.
+    @Column(nullable = false)
+    private int failedLoginAttempts = 0;
+
+    private LocalDateTime lockedUntil;
+
     // No roles/admin distinction yet - every registered user is a plain
     // user. The existing POST /api/admin/import route has its own
     // separate shared-secret gate (AdminApiKeyInterceptor) unrelated to

@@ -83,6 +83,27 @@ public class GlobalExceptionHandler {
         }
 
         /**
+         * Thrown by AuthService#login when an account has too many recent
+         * failed login attempts (see raillens.auth.max-failed-login-attempts/
+         * raillens.auth.lockout-duration-minutes). 423 Locked rather than 401
+         * so the frontend can show "try again later" instead of "check your
+         * password" - the account is genuinely locked here, a correct
+         * password would still be rejected.
+         */
+        @ExceptionHandler(AccountLockedException.class)
+        public ResponseEntity<ApiErrorResponse> handleAccountLocked(
+                        AccountLockedException ex) {
+
+                ApiErrorResponse response = new ApiErrorResponse(
+                                LocalDateTime.now(),
+                                HttpStatus.LOCKED.value(),
+                                ex.getMessage());
+
+                return ResponseEntity.status(HttpStatus.LOCKED)
+                                .body(response);
+        }
+
+        /**
          * Thrown by AuthService on register when the username or email is
          * already taken. Checked explicitly before attempting the insert (see
          * AuthService#register) so the caller gets a friendly, field-specific

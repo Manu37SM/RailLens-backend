@@ -17,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.labs.train.train_db.entity.User;
+import com.labs.train.train_db.exception.AccountLockedException;
 import com.labs.train.train_db.exception.DuplicateUserException;
 import com.labs.train.train_db.exception.InvalidCredentialsException;
 import com.labs.train.train_db.model.AuthResponse;
@@ -43,6 +44,19 @@ class AuthServiceTest {
 
         @InjectMocks
         private AuthService authService;
+
+        @org.junit.jupiter.api.BeforeEach
+        void configureLockoutThresholds() {
+                // @Value fields aren't populated by Mockito's @InjectMocks (there's
+                // no Spring context in this test) - set them explicitly so the
+                // lockout tests below exercise the same defaults as
+                // application.properties.example rather than Java's int/long
+                // zero-defaults.
+                org.springframework.test.util.ReflectionTestUtils.setField(
+                                authService, "maxFailedLoginAttempts", 5);
+                org.springframework.test.util.ReflectionTestUtils.setField(
+                                authService, "lockoutDurationMinutes", 15L);
+        }
 
         @Test
         void registerRejectsATakenUsernameBeforeTouchingTheDatabase() {
@@ -197,5 +211,83 @@ class AuthServiceTest {
 
                 assertThat(user.getPasswordHash()).isEqualTo("new-hash");
                 verify(refreshTokenService).revokeAllForUser(user);
+        }
+
+        @Test
+        void loginLocksTheAccountAfterTheConfiguredNumberOfFailedAttempts() {
+                User user = new User();
+                user.setUsername("manish");
+                user.setPasswordHash("hashed-value");
+                user.setFailedLoginAttempts(4);
+
+                LoginRequest request = new LoginRequest("manish", "wrong-password");
+                when(userRepository.findByUsernameOrEmail("manish", "manish")).thenReturn(Optional.of(user));
+                when(passwordEncoder.matches("wrong-password", "hashed-value")).thenReturn(false);
+
+                assertThatThrownBy(() -> authService.login(request))
+                                .isInstanceOf(InvalidCredentialsException.class);
+
+                assertThat(user.getFailedLoginAttempts()).isEqualTo(5);
+                assertThat(user.getLockedUntil()).isAfter(LocalDateTime.now());
+        }
+
+        @Test
+        void loginRejectsACorrectPasswordWhileTheAccountIsLocked() {
+                User user = new User();
+                user.setUsername("manish");
+                user.setPasswordHash("hashed-value");
+                user.setFailedLoginAttempts(5);
+                user.setLockedUntil(LocalDateTime.now().plusMinutes(10));
+
+                LoginRequest request = new LoginRequest("manish", "password1");
+                when(userRepository.findByUsernameOrEmail("manish", "manish")).thenReturn(Optional.of(user));
+
+                assertThatThrownBy(() -> authService.login(request))
+                                .isInstanceOf(AccountLockedException.class);
+
+                verify(passwordEncoder, org.mockito.Mockito.never()).matches(any(), any());
+        }
+
+        @Test
+        void loginAutoUnlocksAndSucceedsOnceTheLockoutWindowHasPassed() {
+                User user = new User();
+                user.setUsername("manish");
+                user.setEmail("manish@example.com");
+                user.setPasswordHash("hashed-value");
+                user.setFailedLoginAttempts(5);
+                user.setLockedUntil(LocalDateTime.now().minusSeconds(1));
+
+                LoginRequest request = new LoginRequest("manish", "password1");
+                when(userRepository.findByUsernameOrEmail("manish", "manish")).thenReturn(Optional.of(user));
+                when(passwordEncoder.matches("password1", "hashed-value")).thenReturn(true);
+                when(jwtService.generateToken("manish")).thenReturn("signed-jwt");
+                when(jwtService.getExpirationSeconds()).thenReturn(3600L);
+                when(refreshTokenService.issue(any())).thenReturn("refresh-token-value");
+
+                AuthResponse response = authService.login(request);
+
+                assertThat(response.token()).isEqualTo("signed-jwt");
+                assertThat(user.getLockedUntil()).isNull();
+                assertThat(user.getFailedLoginAttempts()).isEqualTo(0);
+        }
+
+        @Test
+        void loginResetsTheFailedAttemptCounterOnSuccess() {
+                User user = new User();
+                user.setUsername("manish");
+                user.setEmail("manish@example.com");
+                user.setPasswordHash("hashed-value");
+                user.setFailedLoginAttempts(3);
+
+                LoginRequest request = new LoginRequest("manish", "password1");
+                when(userRepository.findByUsernameOrEmail("manish", "manish")).thenReturn(Optional.of(user));
+                when(passwordEncoder.matches("password1", "hashed-value")).thenReturn(true);
+                when(jwtService.generateToken("manish")).thenReturn("signed-jwt");
+                when(jwtService.getExpirationSeconds()).thenReturn(3600L);
+                when(refreshTokenService.issue(any())).thenReturn("refresh-token-value");
+
+                authService.login(request);
+
+                assertThat(user.getFailedLoginAttempts()).isEqualTo(0);
         }
 }

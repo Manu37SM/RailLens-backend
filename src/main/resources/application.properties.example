@@ -83,6 +83,16 @@ raillens.jwt.expiration-minutes=60
 # refresh token is single-use, not a 30-day skeleton key.
 raillens.jwt.refresh-expiration-days=30
 
+# Account lockout (see AuthService#login). After this many wrong
+# passwords in a row on one account, login is rejected (even with the
+# correct password) until lockout-duration-minutes has passed, then it
+# unlocks automatically on the next attempt - no manual admin action
+# needed. Layered on top of AuthRateLimitInterceptor's per-IP rate limit,
+# which alone doesn't stop a distributed attempt (many IPs, one target
+# account). Defaults shown below if unset.
+raillens.auth.max-failed-login-attempts=5
+raillens.auth.lockout-duration-minutes=15
+
 # Health check for deployment platforms (Render, Docker, load balancers,
 # etc.) - GET /actuator/health returns {"status":"UP"} once the app and its
 # database connection are ready, and isn't behind RateLimitInterceptor or

@@ -1,9 +1,13 @@
 package com.labs.train.train_db.service;
 
+import java.time.LocalDateTime;
+
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.labs.train.train_db.entity.User;
+import com.labs.train.train_db.exception.AccountLockedException;
 import com.labs.train.train_db.exception.DuplicateUserException;
 import com.labs.train.train_db.exception.InvalidCredentialsException;
 import com.labs.train.train_db.model.AuthResponse;
@@ -30,6 +34,12 @@ public class AuthService {
         private final PasswordEncoder passwordEncoder;
         private final JwtService jwtService;
         private final RefreshTokenService refreshTokenService;
+
+        @Value("${raillens.auth.max-failed-login-attempts:5}")
+        private int maxFailedLoginAttempts;
+
+        @Value("${raillens.auth.lockout-duration-minutes:15}")
+        private long lockoutDurationMinutes;
 
         public AuthResponse register(RegisterRequest request) {
 
@@ -75,9 +85,36 @@ public class AuthService {
                                         return new InvalidCredentialsException("Invalid username/email or password");
                                 });
 
+                // Checked before the password itself: an attacker who already
+                // triggered the lockout shouldn't be able to keep guessing (or
+                // learn anything from response timing) just because rejecting
+                // here happens before the BCrypt comparison. If a previous
+                // lockout has since expired, clear it here rather than making
+                // every other code path remember to check "is lockedUntil
+                // actually still in the future" - the next section below
+                // handles auto-unlock either way (a lock that expired is
+                // treated as not locked, and a successful/failed attempt from
+                // here on resets or re-locks from a clean slate).
+                if (user.getLockedUntil() != null) {
+                        if (user.getLockedUntil().isAfter(LocalDateTime.now())) {
+                                throw new AccountLockedException(
+                                                "Account temporarily locked due to too many failed login attempts. "
+                                                                + "Try again later.");
+                        }
+
+                        user.setLockedUntil(null);
+                        user.setFailedLoginAttempts(0);
+                }
+
                 if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+                        registerFailedAttempt(user);
                         log.warn("Failed login attempt (wrong password) for user: {}", user.getUsername());
                         throw new InvalidCredentialsException("Invalid username/email or password");
+                }
+
+                if (user.getFailedLoginAttempts() != 0) {
+                        user.setFailedLoginAttempts(0);
+                        userRepository.save(user);
                 }
 
                 String token = jwtService.generateToken(user.getUsername());
@@ -85,6 +122,30 @@ public class AuthService {
 
                 return AuthResponse.of(
                                 token, jwtService.getExpirationSeconds(), refreshToken, user.getUsername(), user.getEmail());
+        }
+
+        /**
+         * Increments the failed-attempt counter and, once it reaches {@code
+         * raillens.auth.max-failed-login-attempts}, locks the account for
+         * {@code raillens.auth.lockout-duration-minutes}. Layered on top of
+         * AuthRateLimitInterceptor's per-client-IP rate limit (see that
+         * class's javadoc) - that limit alone doesn't stop a distributed
+         * attempt spread across many IPs against one account, which this
+         * closes by tracking failures on the account itself instead.
+         */
+        private void registerFailedAttempt(User user) {
+
+                int attempts = user.getFailedLoginAttempts() + 1;
+                user.setFailedLoginAttempts(attempts);
+
+                if (attempts >= maxFailedLoginAttempts) {
+                        user.setLockedUntil(LocalDateTime.now().plusMinutes(lockoutDurationMinutes));
+                        log.warn(
+                                        "Account locked for {} minutes after {} failed login attempts: {}",
+                                        lockoutDurationMinutes, attempts, user.getUsername());
+                }
+
+                userRepository.save(user);
         }
 
         /**
