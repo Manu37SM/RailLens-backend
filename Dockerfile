@@ -21,4 +21,4 @@ COPY --from=build /app/target/*.jar app.jar
 ENV PORT=8080
 EXPOSE 8080
 
-ENTRYPOINT ["sh", "-c", "java -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -jar app.jar --server.port=${PORT} --spring.datasource.url=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=require"]
+ENTRYPOINT ["sh", "-c", "java -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -jar app.jar --server.port=${PORT} \"--spring.datasource.url=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=require&currentSchema=public\""]
