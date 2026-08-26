@@ -26,14 +26,6 @@ class SmartSearchServiceTest {
         @Mock
         private StationRepository stationRepository;
 
-        // TrainSummaryIndex now reads through ScheduleSnapshotService instead of
-        // TrainScheduleRepository directly (see that class's javadoc - it was
-        // an independent full-table load duplicating what ScheduleSnapshotService
-        // already consolidates for every other "Railway Intelligence" service).
-        // The mock is still set up per-test via trainScheduleRepository so the
-        // existing when(...findAllByOrderBy...) calls below don't need to
-        // change - ScheduleSnapshotService.getAllOrderedByTrainThenSequence()
-        // just delegates straight to that same repository method.
         @Mock
         private TrainScheduleRepository trainScheduleRepository;
 
@@ -109,7 +101,6 @@ class SmartSearchServiceTest {
 
                 SmartSearchResponse response = service().search("trains that stop at both A and B");
 
-                // Only 9001 stops at both A and B - 9002 skips B entirely.
                 assertThat(response.recognized()).isTrue();
                 assertThat(response.matchCount()).isEqualTo(1);
                 assertThat(response.trains().get(0).trainNumber()).isEqualTo("9001");

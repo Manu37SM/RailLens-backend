@@ -36,25 +36,6 @@ import com.labs.train.train_db.repository.TrainScheduleRepository;
 import com.labs.train.train_db.service.RailwayDataImportService.ParsedRow;
 import com.labs.train.train_db.service.RailwayImportBatchService.BatchImportResult;
 
-/**
- * Covers the per-row persistence logic in {@code RailwayImportBatchService}/
- * {@code RailwayImportRowService} - new station/train creation, existing
- * station/train name updates, the delete-schedule-once-per-train rule
- * (shared across batches via {@code processedTrains}), and that a single
- * row's persistence failure is caught, rolled back to its own savepoint, and
- * counted rather than propagating and failing the whole batch.
- *
- * {@code entityManager}/{@code session}/{@code connection} are mocked rather
- * than provided by a real Spring/Hibernate context - this stays a plain,
- * fast Mockito unit test. The mocked {@code session.doReturningWork}/{@code
- * doWork} answers actually invoke the callback they're given against the
- * mocked {@code connection}, so the production code's real savepoint/
- * rollback/release call sequence is genuinely exercised, not just assumed.
- * {@code entityManager} is injected via {@code ReflectionTestUtils} because
- * it's a {@code @PersistenceContext} field, not a constructor parameter -
- * there's no public seam for it otherwise in a class only ever meant to be
- * constructed by Spring in production.
- */
 @ExtendWith(MockitoExtension.class)
 class RailwayImportBatchServiceTest {
 
@@ -133,7 +114,7 @@ class RailwayImportBatchServiceTest {
                 assertThat(stationCache).containsKey("NDLS");
                 assertThat(trainCache).containsKey("12301");
                 verify(trainScheduleRepository).save(any());
-                verify(session).doWork(any()); // the savepoint release
+                verify(session).doWork(any());
         }
 
         @Test
@@ -175,9 +156,6 @@ class RailwayImportBatchServiceTest {
                 Map<String, Station> stationCache = new HashMap<>(Map.of("NDLS", cachedStation));
                 Map<String, Train> trainCache = new HashMap<>(Map.of("12301", cachedTrain));
 
-                // Simulates the shared, cross-batch state RailwayDataImportService
-                // passes in - a train already marked processed by an earlier
-                // batch must not have its schedule deleted again.
                 Set<String> processedTrains = new HashSet<>(Set.of("12301"));
 
                 service().importBatch(
@@ -212,8 +190,6 @@ class RailwayImportBatchServiceTest {
                 assertThat(result.failed()).isEqualTo(2);
                 assertThat(result.succeeded()).isZero();
                 verify(trainScheduleRepository, times(2)).save(any());
-                // Each failing row rolls back to its own savepoint rather than
-                // propagating - two rows, two rollbacks.
                 verify(session, times(2)).doWork(any());
         }
 }

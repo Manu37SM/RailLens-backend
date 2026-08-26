@@ -16,18 +16,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-/**
- * A long-lived, opaque bearer credential that can be exchanged for a fresh
- * short-lived access JWT (see JwtService/RefreshTokenService) without the
- * user re-entering their password. Only the SHA-256 hash of the raw token
- * is stored - same reasoning as never storing a plaintext password - so a
- * database leak alone doesn't hand out working refresh tokens.
- *
- * Single-use: RefreshTokenService revokes the old row and issues a new one
- * on every refresh ("rotation"), so a stolen-and-reused refresh token is
- * detectable (the legitimate owner's next refresh will fail because the
- * token was already consumed).
- */
 @Entity
 @Table(
                 name = "refresh_tokens",

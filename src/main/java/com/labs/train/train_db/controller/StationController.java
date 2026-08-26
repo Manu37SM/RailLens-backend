@@ -42,9 +42,6 @@ public class StationController {
         return stationService.createStation(request);
     }
 
-    /**
-     * Paginated for the same reason as {@code TrainController#getAllTrains}.
-     */
     @GetMapping
     public Page<StationSearchResponse> getAllStations(
             @PageableDefault(size = 20) Pageable pageable) {

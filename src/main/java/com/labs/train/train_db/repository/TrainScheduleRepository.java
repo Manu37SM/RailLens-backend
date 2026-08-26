@@ -27,32 +27,10 @@ public interface TrainScheduleRepository
 
     List<TrainSchedule> findByTrain_IdInOrderByTrain_IdAscSequenceNoAsc(List<Long> trainIds);
 
-    /**
-     * Every schedule row, grouped-ready (ordered by train then sequence).
-     * Used only by StatsService's fastest/slowest-trains computation - see
-     * TrainSpeedProjection's javadoc for why that can't be a simple JPQL
-     * aggregation like the other stats queries in this file. Result is
-     * cached at the StatsService layer (STATS_CACHE), so this full-table
-     * scan only runs on a cache miss, not per-request.
-     */
     List<TrainSchedule> findAllByOrderByTrain_IdAscSequenceNoAsc();
 
-    // No repository-level @Transactional here - the only caller
-    // (RailwayDataImportService) is already class-level @Transactional,
-    // so Spring just joins that existing transaction; the annotation here
-    // was redundant and, per the backend architecture review, an unclear
-    // signal about which layer actually owns the transaction boundary.
     void deleteByTrain(Train train);
 
-    /**
-     * A train's total route distance is the MAX(distance) among its own
-     * schedule rows (distance is cumulative from origin - see
-     * TrainService#getTrainDetails). Aggregated in the database rather
-     * than loading every schedule row into Java, both for the P0
-     * "efficient SQL" goal and because this specific query backs a public,
-     * unauthenticated endpoint (GET /api/stats) that has to stay cheap
-     * under repeated hits from RateLimitInterceptor's 120/min ceiling.
-     */
     @Query("""
             SELECT new com.labs.train.train_db.model.RouteDistanceProjection(
                 ts.train.trainNumber, ts.train.trainName, MAX(ts.distance))

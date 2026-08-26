@@ -22,21 +22,6 @@ import com.labs.train.train_db.service.network.StationNetworkNode;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * "Station Intelligence" scores (FEATURE.md) for a single station - the
- * per-station counterpart to TrainIntelligenceService. Connectivity/
- * centrality/rank reuse the shared network snapshot (RailwayNetworkService)
- * directly; average speed and the hourly departure/arrival histograms are
- * this station's own concern, since the network snapshot only records
- * adjacency (which stations connect), not per-hop distance/timing, and
- * isn't the right place to carry that - other network features don't need
- * it, and adding it there would mean recomputing it on every snapshot
- * build/cache-miss instead of only when a station is actually looked up.
- *
- * Like TrainIntelligenceService, computed on demand per station rather than
- * batch-precomputed - only ever requested for the one station a user is
- * currently viewing.
- */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -72,11 +57,6 @@ public class StationIntelligenceService {
                 Double averageSpeed = averageTrainSpeedThroughStation(stationCode, ownSchedules);
 
                 if (node == null) {
-                        // Station exists in the stations table but has no schedule rows
-                        // (e.g. just created via POST /stations) - real record, just
-                        // nothing to analyze yet. Zeros rather than an error, same
-                        // reasoning as StationResponse.trains being empty rather than
-                        // getStation throwing.
                         return new StationIntelligenceResponse(
                                         station.getStationCode(), station.getStationName(),
                                         null, network.totalStations(),
@@ -112,12 +92,6 @@ public class StationIntelligenceService {
                 double trafficScore = maxStopCount == 0 ? 0.0 : Math.min(100.0, totalStops * 100.0 / maxStopCount);
                 double closenessScore = Math.min(100.0, node.closenessCentrality * 100.0);
 
-                // Composite, documented judgment call (same spirit as
-                // TrainIntelligenceService's routeComplexityScore): weighted
-                // toward raw connectivity (how many distinct stations this one
-                // links to directly) since that's the most concrete/comparable
-                // signal, with reach (closeness) and traffic volume as
-                // secondary factors.
                 double importanceScore = round1(Math.min(100.0,
                                 connectivityScore * 0.5 + closenessScore * 0.25 + trafficScore * 0.25));
 
@@ -136,8 +110,6 @@ public class StationIntelligenceService {
                                 departureByHour, arrivalByHour);
         }
 
-        // ------------------------------------------------------------
-
         private Integer networkRank(RailwayNetworkSnapshot network, String stationCode) {
 
                 List<String> orderedByBetweenness = network.stations.values().stream()
@@ -154,18 +126,6 @@ public class StationIntelligenceService {
                 return total == 0 ? 0.0 : round1(part * 100.0 / total);
         }
 
-        /**
-         * Averages the speed of the segment immediately before and/or after
-         * this station on every train that serves it - a station has no
-         * speed of its own, only the hops touching it, so "average train
-         * speed through this station" is necessarily an average over those
-         * adjacent segments rather than a single measured value. Segments
-         * crossing midnight are handled by adding 24h when the arrival clock
-         * time is earlier than the departure clock time - a simplification
-         * (it assumes at most a single day-rollover per segment, which holds
-         * for any realistic single hop, unlike a full multi-day journey -
-         * see JourneyDayCalculator for the more careful version used there).
-         */
         private Double averageTrainSpeedThroughStation(String stationCode, List<TrainSchedule> ownSchedules) {
 
                 if (ownSchedules.isEmpty()) {
@@ -214,13 +174,6 @@ public class StationIntelligenceService {
                 return speedCount == 0 ? null : round1(speedSum / speedCount);
         }
 
-        /**
-         * Matches by entity id rather than {@code List#indexOf} on the entity
-         * itself - both lists come from separate queries, and relying on
-         * JPA's first-level-cache identity map to hand back the exact same
-         * object instance across two different query methods (even within
-         * one transaction) is more fragile than just comparing ids.
-         */
         private int indexById(List<TrainSchedule> route, Long id) {
 
                 for (int i = 0; i < route.size(); i++) {

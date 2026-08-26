@@ -75,8 +75,6 @@ class RateLimitInterceptorTest {
                         interceptor.preHandle(request, response, new Object());
                 }
 
-                // Same forwarded IP again, still on the same underlying "client" -
-                // should be the 121st hit against that bucket and get rejected.
                 boolean allowed = interceptor.preHandle(request, response, new Object());
 
                 assertThat(allowed).isFalse();

@@ -26,13 +26,6 @@ public interface TrainRepository extends JpaRepository<Train, Long> {
             @Param("query") String query,
             Pageable pageable);
 
-    /**
-     * Number+name only, for every train - backs the fuzzy-search fallback
-     * (see FuzzyMatch / TrainService#search). Cached at the service layer
-     * (SEARCH_INDEX_CACHE) since this is a full-table read; only actually
-     * runs on a cache miss, and only reachable when the primary LIKE search
-     * finds zero results.
-     */
     @Query("SELECT new com.labs.train.train_db.model.TrainSearchResponse(t.trainNumber, t.trainName) FROM Train t")
     List<TrainSearchResponse> findAllSearchKeys();
 

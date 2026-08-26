@@ -37,8 +37,6 @@ class StatsServiceTest {
         @Mock
         private ScheduleSnapshotService scheduleSnapshotService;
 
-        // Stateless, no dependencies of its own - safe to use the real thing
-        // rather than mocking every call (see its own class javadoc).
         private final JourneyDayCalculator journeyDayCalculator = new JourneyDayCalculator();
 
         private StatsService statsService() {
@@ -134,18 +132,14 @@ class StatsServiceTest {
                 Station a = station("AAA", "Station A");
                 Station b = station("BBB", "Station B");
 
-                // Fast: 120 km in 1h -> 120 km/h.
                 Train fast = train(1L, "1001", "Fast Express");
                 TrainSchedule fastStart = schedule(fast, a, 1, null, LocalTime.of(10, 0), 0);
                 TrainSchedule fastEnd = schedule(fast, b, 2, LocalTime.of(11, 0), null, 120);
 
-                // Slow: 60 km in 2h -> 30 km/h.
                 Train slow = train(2L, "1002", "Slow Passenger");
                 TrainSchedule slowStart = schedule(slow, a, 1, null, LocalTime.of(9, 0), 0);
                 TrainSchedule slowEnd = schedule(slow, b, 2, LocalTime.of(11, 0), null, 60);
 
-                // Incomplete: missing arrival time at the last stop - must be
-                // skipped rather than crashing or being counted as 0 km/h.
                 Train incomplete = train(3L, "1003", "Incomplete Train");
                 TrainSchedule incompleteStart = schedule(incomplete, a, 1, null, LocalTime.of(9, 0), 0);
                 TrainSchedule incompleteEnd = schedule(incomplete, b, 2, null, null, 60);

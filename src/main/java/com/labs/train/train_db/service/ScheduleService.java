@@ -29,13 +29,6 @@ public class ScheduleService {
         private final StationRepository stationRepository;
         private final TrainScheduleRepository trainScheduleRepository;
 
-        /**
-         * Adding a stop changes the route TrainService#getTrainDetails and
-         * StationService#getStation would have cached for this train/station,
-         * so both entries are evicted immediately rather than waiting out
-         * CacheConfig's TTL - a stale route is exactly the kind of bug that's
-         * hard to notice and confusing to debug.
-         */
         @Caching(evict = {
                         @CacheEvict(cacheNames = CacheConfig.TRAIN_DETAILS_CACHE, key = "#request.trainNumber"),
                         @CacheEvict(cacheNames = CacheConfig.STATION_DETAILS_CACHE, key = "#request.stationCode")

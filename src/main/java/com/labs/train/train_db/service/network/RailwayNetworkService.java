@@ -25,25 +25,6 @@ import com.labs.train.train_db.service.ScheduleSnapshotService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * Builds the shared railway network graph (stations as nodes, a direct hop
- * between consecutive stops on any train's route as an edge) that every
- * "Railway Intelligence" feature added in this pass reads from - station
- * importance/connectivity, train uniqueness/station-skipping, route
- * analytics, and the graph-theoretic metrics under "Railway Network"
- * (diameter, centrality, connected components) all need the same underlying
- * structure, so it's built once here rather than each feature re-scanning
- * the schedule table and re-deriving adjacency independently.
- *
- * A single full-table pass (the same shared, cached snapshot -
- * {@code ScheduleSnapshotService} - StatsService/RankingsService/
- * FunStatsService/AchievementsService also read from, rather than each
- * independently re-querying the same ~300k rows) plus one BFS per station
- * in the largest connected component (Brandes' algorithm, for betweenness/
- * closeness/diameter together in one pass) - expensive enough that it must
- * stay cached (NETWORK_CACHE) rather than recomputed per request, but a
- * one-time cost on cache miss, same trade-off StatsService already makes.
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -57,9 +38,6 @@ public class RailwayNetworkService {
 
                 long startedAt = System.currentTimeMillis();
 
-                // Shared cached snapshot (see ScheduleSnapshotService) instead of
-                // querying the repository directly - avoids this endpoint being
-                // one more independent ~300k-row load on a cold cache.
                 Map<Long, List<TrainSchedule>> schedulesByTrainId = scheduleSnapshotService
                                 .getAllOrderedByTrainThenSequence()
                                 .stream()
@@ -134,32 +112,12 @@ public class RailwayNetworkService {
                                 stations, totalTrains, analysis.components, analysis.largestComponentIndex, analysis.diameter);
         }
 
-        // Raised from 10 - the free Render instance this was tuned for is
-        // gone (now on the Standard plan), and the frontend's
-        // NetworkStatsGrid already defensively slices to 25, so this was
-        // the tighter of the two caps in practice. This ranking list is the
-        // only place buildSnapshot()'s output is truncated at all - see
-        // getNetworkStats() below, everything else (totalStations,
-        // totalTrains, totalEdges, routeDensity, connectedComponents,
-        // networkDiameter) is already computed over the full dataset.
         private static final int TOP_CENTRAL_STATIONS = 25;
 
-        /**
-         * Network-wide summary (FEATURE.md's "Railway Network" section) -
-         * built from the same cached snapshot #buildSnapshot produces, so
-         * this is cheap on top of an existing cache hit and only pays the
-         * full graph-analysis cost on the same cache miss buildSnapshot
-         * would anyway.
-         */
         public NetworkStatsResponse getNetworkStats() {
 
                 RailwayNetworkSnapshot snapshot = buildSnapshot();
 
-                // Explicit lambda rather than StationNetworkNode::degree - avoids
-                // the JDT null analyzer's "unchecked conversion for the
-                // receiver" warning on the method-reference form (same reasoning
-                // as the fixes elsewhere in this codebase); same behavior either
-                // way.
                 int totalEdges = snapshot.stations.values().stream()
                                 .mapToInt((StationNetworkNode node) -> node.degree())
                                 .sum() / 2;
@@ -199,22 +157,9 @@ public class RailwayNetworkService {
                                 mostCentral);
         }
 
-        // ------------------------------------------------------------
-
         private record GraphAnalysis(List<Set<String>> components, int largestComponentIndex, int diameter) {
         }
 
-        /**
-         * Connected components (BFS flood-fill) over every station, then
-         * betweenness/closeness centrality and eccentricity (Brandes'
-         * algorithm - one BFS per node, unweighted) restricted to the largest
-         * component only. Stations outside it keep their centrality/
-         * eccentricity at the {@link StationNetworkNode} default of 0 - a
-         * shortest-path distance to an unreachable station isn't a number,
-         * not a real zero, but 0 is a safer default for API consumers than
-         * throwing or returning a sentinel like -1 that a naive caller might
-         * plot on a chart.
-         */
         private GraphAnalysis analyzeGraph(Map<String, StationNetworkNode> stations) {
 
                 List<Set<String>> components = findConnectedComponents(stations);
@@ -270,32 +215,6 @@ public class RailwayNetworkService {
                 return components;
         }
 
-        /**
-         * Brandes' algorithm (Brandes, 2001) - computes betweenness
-         * centrality for every node in one BFS-per-source pass rather than
-         * the naive O(V^3) all-pairs-shortest-paths approach, and closeness
-         * centrality / eccentricity fall out of the same BFS distances for
-         * free. Undirected graph, so raw betweenness accumulation double-
-         * counts each shortest path (once from each endpoint's BFS) - halved
-         * at the end, the standard correction for undirected Brandes.
-         *
-         * Array-indexed, not the String-keyed HashMap version this used to
-         * be. The algorithm is unchanged (same asymptotic O(V*E) cost,
-         * identical output), but the old version rebuilt several HashMaps
-         * from scratch for every one of the V source stations - on a real
-         * ~300k-row schedule import with several thousand stations, that's
-         * tens of millions of hashed String lookups/boxed-object
-         * allocations just for bookkeeping, heavy enough to spike heap
-         * usage and stall the GC (confirmed locally: this endpoint could
-         * exhaust RAM on a constrained machine). Render's free web
-         * instance is capped at 512MB, and this cache entry expires and
-         * recomputes every 15 minutes (see CacheConfig.NETWORK_CACHE), so
-         * that cost wasn't a one-off - it would have repeated in
-         * production. Assigning each station a dense integer index once
-         * and using primitive arrays for distance/sigma/dependency plus a
-         * hand-rolled queue removes essentially all of that per-source
-         * allocation churn.
-         */
         private int computeCentralityAndDiameter(Map<String, StationNetworkNode> stations, Set<String> component) {
 
                 int n = component.size();
@@ -304,10 +223,6 @@ public class RailwayNetworkService {
                         return 0;
                 }
 
-                // Dense index <-> station-code mapping and a precomputed,
-                // component-restricted adjacency list - both built once
-                // (O(V+E)), not rebuilt on every one of the n BFS passes
-                // below like the String/HashMap version did.
                 String[] indexToCode = component.toArray(new String[0]);
                 Map<String, Integer> codeToIndex = new HashMap<>(n * 2);
 
@@ -325,10 +240,6 @@ public class RailwayNetworkService {
 
                         for (String neighborCode : neighborCodes) {
                                 Integer neighborIndex = codeToIndex.get(neighborCode);
-                                // A neighbor should always be in this same component
-                                // (it's how components are found in the first place),
-                                // but this is a graph built from imported CSV data, so
-                                // guard rather than assume.
                                 if (neighborIndex != null) {
                                         neighbors[count++] = neighborIndex;
                                 }
@@ -340,10 +251,6 @@ public class RailwayNetworkService {
                 double[] betweenness = new double[n];
                 int diameter = 0;
 
-                // Reused across every source iteration - reset to their
-                // "unvisited" state at the end of each source (see below)
-                // rather than reallocated, so a run over n sources allocates
-                // these once, not n times.
                 int[] distance = new int[n];
                 Arrays.fill(distance, -1);
                 double[] sigma = new double[n];
@@ -425,12 +332,6 @@ public class RailwayNetworkService {
                                 }
                         }
 
-                        // Reset exactly what this source's BFS touched back to the
-                        // "unvisited" state, ready for the next source - a connected
-                        // component means visitCount is always n here, but doing it
-                        // this way (rather than re-filling whole n-sized structures)
-                        // keeps the reset cost tied to what was actually visited, not
-                        // a separate O(n) pass.
                         for (int i = 0; i < visitCount; i++) {
                                 int node = visitOrder[i];
                                 distance[node] = -1;
@@ -441,7 +342,6 @@ public class RailwayNetworkService {
                 }
 
                 for (int i = 0; i < n; i++) {
-                        // Halved: undirected-graph correction (see method javadoc).
                         stations.get(indexToCode[i]).betweennessCentrality = betweenness[i] / 2.0;
                 }
 

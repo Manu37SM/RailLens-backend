@@ -45,13 +45,6 @@ public class TrainController {
         return trainService.createTrain(request);
     }
 
-    /**
-     * Paginated to avoid shipping every row in the table in one response
-     * (see the RailLens backend review's "unpaginated list endpoint"
-     * finding). Defaults to 20 per page, capped implicitly by
-     * {@code Pageable}'s own bounds; callers can override with the standard
-     * {@code ?page=&size=&sort=} query params.
-     */
     @GetMapping
     public Page<TrainSearchResponse> getAllTrains(
             @PageableDefault(size = 20) Pageable pageable) {
@@ -70,27 +63,9 @@ public class TrainController {
     public TrainDetailsResponse getTrainDetails(
             @PathVariable @NotBlank String trainNumber) {
 
-        // Normalized the same way StationController normalizes
-        // stationCode - train numbers are numeric today, so this is
-        // currently a no-op, but per the backend architecture review's
-        // "inconsistent case normalization" finding, some Indian Railways
-        // special/international services do use alphanumeric identifiers,
-        // and TrainController previously never normalized case anywhere.
         return trainService.getTrainDetails(trainNumber.toUpperCase());
     }
 
-    /**
-     * "Train Intelligence" scores (FEATURE.md) - route complexity,
-     * uniqueness, expressness, night/day travel split, longest non-stop
-     * segment, average halt duration, journey efficiency, and possibly-
-     * skipped stations. See TrainIntelligenceService for how each is
-     * derived and, where relevant, the documented judgment call behind it.
-     * Deliberately a separate endpoint from getTrainDetails rather than
-     * folding these fields into TrainDetailsResponse - this one additionally
-     * depends on the network-wide graph snapshot (RailwayNetworkService),
-     * so it's a heavier call that a caller who only wants the schedule
-     * shouldn't be forced to pay for.
-     */
     @GetMapping("/{trainNumber}/intelligence")
     public TrainIntelligenceResponse getTrainIntelligence(
             @PathVariable @NotBlank String trainNumber) {
@@ -98,11 +73,6 @@ public class TrainController {
         return trainIntelligenceService.getIntelligence(trainNumber.toUpperCase());
     }
 
-    /**
-     * "Route Analytics" (FEATURE.md) - overlap, longest common section,
-     * divergence/convergence points, and reverse-route detection between
-     * two trains. See RouteAnalyticsService for how each field is derived.
-     */
     @GetMapping("/{trainNumber}/compare/{otherTrainNumber}")
     public RouteComparisonResponse compareRoutes(
             @PathVariable @NotBlank String trainNumber,

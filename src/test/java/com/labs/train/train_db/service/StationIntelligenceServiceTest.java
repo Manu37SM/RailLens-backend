@@ -83,16 +83,6 @@ class StationIntelligenceServiceTest {
                                 .hasMessageContaining("ZZZZ");
         }
 
-        /**
-         * A star-shaped mini network centered on B:
-         *   Train 9001: A --08:00--> B (100km, arr 09:00) --09:10--> C (100km, arr 10:00)
-         *   Train 9002: X --08:00--> B (50km, arr 08:30) --08:40--> Y (50km, arr 09:10)
-         *
-         * B is the only station with more than one direct neighbor (A, C, X,
-         * Y - degree 4), so every hand-computable metric should max out on B:
-         * highest degree/connectivity, highest betweenness/closeness (a
-         * classic star graph's center), most traffic.
-         */
         @Test
         void computesExactMetricsForAStarShapedNetwork() {
 
@@ -134,16 +124,12 @@ class StationIntelligenceServiceTest {
                 assertThat(response.stationCode()).isEqualTo("B");
                 assertThat(response.totalStationsInNetwork()).isEqualTo(5);
 
-                // Star center: only station with more than one neighbor.
                 assertThat(response.degree()).isEqualTo(4);
                 assertThat(response.connectivityScore()).isCloseTo(100.0, within(0.01));
                 assertThat(response.networkRank()).isEqualTo(1);
 
-                // Closeness: distance 1 to all 4 other stations -> 4 / 4 = 1.0.
                 assertThat(response.closenessCentrality()).isCloseTo(1.0, within(0.0001));
 
-                // Betweenness: every one of C(4,2)=6 leaf pairs' shortest path
-                // passes through B; no other station lies on any shortest path.
                 assertThat(response.betweennessCentrality()).isCloseTo(6.0, within(0.01));
 
                 assertThat(response.totalStops()).isEqualTo(2);
@@ -152,22 +138,12 @@ class StationIntelligenceServiceTest {
                 assertThat(response.transitCount()).isEqualTo(2);
                 assertThat(response.transitPercent()).isCloseTo(100.0, within(0.01));
 
-                // Both halts at B are exactly 10 minutes.
                 assertThat(response.averageHaltMinutes()).isCloseTo(10.0, within(0.01));
 
-                // Segment speeds through B: A->B 100km/60min=100km/h,
-                // B->C 100km/50min=120km/h, X->B 50km/30min=100km/h,
-                // B->Y 50km/30min=100km/h. Average = 420/4 = 105.
                 assertThat(response.averageTrainSpeedKmh()).isCloseTo(105.0, within(0.1));
 
-                // connectivity 100*0.5 + closeness 100*0.25 + traffic 100*0.25 (B
-                // also has the highest stopCount, 2, of any station).
                 assertThat(response.stationImportanceScore()).isCloseTo(100.0, within(0.01));
 
-                // B's own two schedule rows: s5 arrives/departs in the 8
-                // o'clock hour (08:30/08:40), s2 arrives/departs in the 9
-                // o'clock hour (09:00/09:10) - one each per hour, not
-                // aggregated across the whole route.
                 assertThat(response.departureCountByHour()[8]).isEqualTo(1);
                 assertThat(response.departureCountByHour()[9]).isEqualTo(1);
                 assertThat(response.arrivalCountByHour()[8]).isEqualTo(1);

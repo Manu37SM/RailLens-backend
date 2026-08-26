@@ -88,9 +88,6 @@ class AdminServiceTest {
         @Test
         void clearAllCachesSkipsMissingCachesWithoutThrowing() {
 
-                // A cache name resolving to null (e.g. renamed/removed from
-                // CacheConfig but this list not updated) must be skipped, not
-                // crash the whole admin operation over one stale name.
                 when(cacheManager.getCache(CacheConfig.TRAIN_DETAILS_CACHE)).thenReturn(null);
                 when(cacheManager.getCache(CacheConfig.STATION_DETAILS_CACHE)).thenReturn(null);
                 when(cacheManager.getCache(CacheConfig.STATS_CACHE)).thenReturn(null);

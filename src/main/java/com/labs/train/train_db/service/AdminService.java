@@ -34,14 +34,6 @@ public class AdminService {
                                 trainScheduleRepository.count());
         }
 
-        /**
-         * Manually flushes every named cache (see CacheConfig) - normally
-         * unnecessary since writes already evict explicitly (see
-         * RailwayDataImportService#evictCachesIfAnyRowsChanged), but useful as
-         * an operator escape hatch: e.g. after editing data directly in the
-         * database rather than through the app, or just to confirm caching
-         * isn't the cause of some data-looks-stale report during debugging.
-         */
         public void clearAllCaches() {
 
                 List<String> cacheNames = List.of(

@@ -1,30 +1,10 @@
 package com.labs.train.train_db.common;
 
-/**
- * Plain-Java Levenshtein distance, used as a fallback when the primary
- * {@code LIKE '%query%'} search (see TrainRepository/StationRepository)
- * finds nothing - e.g. the user typed "Rajdani" instead of "Rajdhani".
- * Deliberately NOT a Postgres trigram (pg_trgm) approach: this project has
- * no migration tool (no Flyway/Liquibase, see CLAUDE.md/project memory -
- * ddl-auto=update only), so adding a database extension would need a
- * manual one-off DBA step outside the app's normal deploy path. Plain-Java
- * distance avoids that entirely at the cost of being O(n*m) per
- * comparison - acceptable here because it only runs on the rare
- * zero-exact-results path, over a small, cached candidate list (see
- * TrainService#fuzzySearchIndex / StationService#fuzzySearchIndex), not on
- * every search request.
- */
 public final class FuzzyMatch {
 
     private FuzzyMatch() {
     }
 
-    /**
-     * How many edits (insert/delete/substitute) a query is allowed to be
-     * off by before a candidate is considered a typo match rather than
-     * noise. Scales with query length so a 2-character query doesn't match
-     * half the database, and a long query tolerates a couple more typos.
-     */
     public static int maxDistanceFor(int queryLength) {
         if (queryLength <= 3) {
             return 1;

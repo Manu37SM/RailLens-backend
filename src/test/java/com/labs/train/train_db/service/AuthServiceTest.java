@@ -47,11 +47,6 @@ class AuthServiceTest {
 
         @org.junit.jupiter.api.BeforeEach
         void configureLockoutThresholds() {
-                // @Value fields aren't populated by Mockito's @InjectMocks (there's
-                // no Spring context in this test) - set them explicitly so the
-                // lockout tests below exercise the same defaults as
-                // application.properties.example rather than Java's int/long
-                // zero-defaults.
                 org.springframework.test.util.ReflectionTestUtils.setField(
                                 authService, "maxFailedLoginAttempts", 5);
                 org.springframework.test.util.ReflectionTestUtils.setField(

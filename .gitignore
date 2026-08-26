@@ -33,3 +33,6 @@ build/
 .vscode/
 application.properties
 *.txt
+# DB backup output (scripts/backup-db.sh) - local default writes outside
+# this repo, but the CI workflow writes here; never commit raw DB dumps.
+backups/

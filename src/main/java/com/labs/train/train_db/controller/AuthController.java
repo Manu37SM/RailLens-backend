@@ -22,22 +22,6 @@ import com.labs.train.train_db.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
-/**
- * Registration, login and account management for the frontend. Tokens are
- * plain bearer JWTs (see {@code JwtService}) - the frontend is expected to
- * store the token and send it as {@code Authorization: Bearer <token>} on
- * any request that needs one. Write endpoints on trains/stations/schedules
- * remain unauthenticated pending a separate decision (see project memory).
- *
- * Every method below except register/login/refresh/logout requires a
- * valid access token - {@code JwtAuthInterceptor} is registered against
- * all of {@code /api/auth/**} except those four (see WebConfig), resolves
- * the authenticated username, and attaches it as a request attribute
- * before the method runs; a missing/invalid token never reaches here.
- * refresh/logout are deliberately excluded too since their whole purpose
- * is to work with a refresh token instead of - often specifically
- * because there is no longer - a valid access token.
- */
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
@@ -80,11 +64,6 @@ public class AuthController {
                 return ResponseEntity.noContent().build();
         }
 
-        /**
-         * Permanent - see AuthService#deleteAccount. Requires the current
-         * password in the body even though the request is already
-         * token-authenticated (see that method's javadoc for why).
-         */
         @DeleteMapping("/me")
         public ResponseEntity<Void> deleteAccount(
                         @RequestAttribute("authenticatedUsername") String username,

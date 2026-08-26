@@ -56,12 +56,6 @@ class RailwayNetworkServiceTest {
                 return schedule;
         }
 
-        /**
-         * A-B-C-D-E as a single straight-line path (one train, 5 stops) has
-         * hand-computable graph metrics for every measure this service
-         * produces - see the method-local comments for the manual
-         * derivation of each expected value.
-         */
         @Test
         void computesKnownMetricsForAFiveStationPath() {
 
@@ -89,21 +83,15 @@ class RailwayNetworkServiceTest {
                 assertThat(snapshot.connectedComponents).hasSize(1);
                 assertThat(snapshot.connectedComponents.get(0)).hasSize(5);
 
-                // Diameter of a 5-node path = 4 (A to E).
                 assertThat(snapshot.networkDiameter).isEqualTo(4);
 
-                // Degree: endpoints have 1 neighbor, everyone else has 2.
                 assertThat(snapshot.station("A").degree()).isEqualTo(1);
                 assertThat(snapshot.station("C").degree()).isEqualTo(2);
 
-                // Closeness(A) = (n-1) / sum_of_distances = 4 / (1+2+3+4) = 0.4.
                 assertThat(snapshot.station("A").closenessCentrality).isCloseTo(0.4, within(0.0001));
 
-                // Closeness(C) = 4 / (2+1+0+1+2 -> sum excluding self = 6) = 0.6667.
                 assertThat(snapshot.station("C").closenessCentrality).isCloseTo(4.0 / 6.0, within(0.0001));
 
-                // Betweenness of a path-graph node at 0-indexed position i (of n)
-                // is i * (n-1-i): A=0*4=0, B=1*3=3, C=2*2=4, D=3*1=3, E=4*0=0.
                 assertThat(snapshot.station("A").betweennessCentrality).isCloseTo(0.0, within(0.0001));
                 assertThat(snapshot.station("B").betweennessCentrality).isCloseTo(3.0, within(0.0001));
                 assertThat(snapshot.station("C").betweennessCentrality).isCloseTo(4.0, within(0.0001));
@@ -135,7 +123,6 @@ class RailwayNetworkServiceTest {
                 assertThat(snapshot.station("B").transitCount).isEqualTo(1);
                 assertThat(snapshot.station("B").originCount).isZero();
                 assertThat(snapshot.station("B").destinationCount).isZero();
-                // 10 minute halt at the one transit stop.
                 assertThat(snapshot.station("B").averageHaltMinutes()).isEqualTo(10.0);
 
                 assertThat(snapshot.station("C").destinationCount).isEqualTo(1);
@@ -188,7 +175,7 @@ class RailwayNetworkServiceTest {
                 assertThat(stats.totalStations()).isEqualTo(5);
                 assertThat(stats.totalTrains()).isEqualTo(1);
                 assertThat(stats.totalEdges()).isEqualTo(4);
-                assertThat(stats.routeDensity()).isCloseTo(0.4, within(0.001)); // 4 / (5*4/2).
+                assertThat(stats.routeDensity()).isCloseTo(0.4, within(0.001));
                 assertThat(stats.connectedComponentCount()).isEqualTo(1);
                 assertThat(stats.largestComponentSize()).isEqualTo(5);
                 assertThat(stats.networkDiameter()).isEqualTo(4);
@@ -212,10 +199,8 @@ class RailwayNetworkServiceTest {
                 Station r = station("R");
 
                 List<TrainSchedule> route = List.of(
-                                // Component 1: X-Y (2 stations).
                                 schedule(small, x, 1, null, LocalTime.of(6, 0)),
                                 schedule(small, y, 2, LocalTime.of(6, 30), null),
-                                // Component 2: P-Q-R (3 stations, disjoint from the above).
                                 schedule(large, p, 1, null, LocalTime.of(8, 0)),
                                 schedule(large, q, 2, LocalTime.of(8, 30), LocalTime.of(8, 35)),
                                 schedule(large, r, 3, LocalTime.of(9, 0), null));
@@ -227,8 +212,6 @@ class RailwayNetworkServiceTest {
                 assertThat(snapshot.connectedComponents).hasSize(2);
                 assertThat(snapshot.connectedComponents.get(snapshot.largestComponentIndex)).hasSize(3);
 
-                // Diameter must come from the 3-node component (P-Q-R, diameter 2),
-                // not the 2-node one.
                 assertThat(snapshot.networkDiameter).isEqualTo(2);
         }
 }

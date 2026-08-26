@@ -1,20 +1,3 @@
-# Render Blueprint - lets Render provision the backend web service and its
-# Postgres database from this one file (Render docs: "Infrastructure as
-# Code"). Deploying still requires the account owner to connect this repo
-# in the Render dashboard and click "Apply" - that step, and any values
-# marked sync: false below, can't be done from here since they need
-# dashboard/account access this session doesn't have.
-#
-# What this does NOT do: it doesn't touch the frontend (train-db-frontend
-# is a separate repo, meant for Vercel - see its README/.env.example).
-#
-# Schema is Flyway-managed (spring.jpa.hibernate.ddl-auto=validate, not
-# update - see application.properties.example) - on a fresh Render
-# Postgres instance, Flyway runs every migration under src/main/resources/
-# db/migration from scratch on first boot, the same way it would against
-# any other brand-new database. This comment used to say ddl-auto=update
-# handled first-boot schema creation, back before this project had any
-# versioned migrations - that's no longer accurate.
 services:
   - type: web
     name: raillens-train-db
@@ -23,61 +6,22 @@ services:
     plan: free
     healthCheckPath: /actuator/health
     envVars:
-      # Render injects PORT automatically; the Dockerfile's ENTRYPOINT
-      # already reads it.
-      # Render's "connectionString" property returns a plain postgres://
-      # URI, not a JDBC URL - Spring's DataSourceProperties requires
-      # "jdbc:postgresql://...". Pull the pieces separately instead and
-      # let the Dockerfile ENTRYPOINT assemble the actual JDBC URL at
-      # startup (same pattern it already uses for ${PORT}).
       - key: DB_HOST
-        fromDatabase:
-          name: raillens-db
-          property: host
+        sync: false
       - key: DB_PORT
-        fromDatabase:
-          name: raillens-db
-          property: port
+        sync: false
       - key: DB_NAME
-        fromDatabase:
-          name: raillens-db
-          property: database
+        sync: false
       - key: SPRING_DATASOURCE_USERNAME
-        fromDatabase:
-          name: raillens-db
-          property: user
+        sync: false
       - key: SPRING_DATASOURCE_PASSWORD
-        fromDatabase:
-          name: raillens-db
-          property: password
-      # Spring Boot defaults this to true, which binds one Hibernate
-      # session to the entire HTTP request for its full duration. Fine for
-      # a normal request, but a real problem for the long-running CSV
-      # import (POST /api/v1/admin/import): the 2026-08-04 production
-      # import showed each successive 10k-row chunk taking noticeably
-      # longer than the last, consistent with entities accumulating in
-      # that one request-long session for the whole multi-hour run rather
-      # than being released. Not a secret, just a non-default value that
-      # should apply the same everywhere, so it's a plain value here
-      # rather than sync: false/generateValue.
+        sync: false
       - key: SPRING_JPA_OPEN_IN_VIEW
         value: "false"
-      # Secrets - generateValue makes Render create a random value on
-      # first deploy so nothing sensitive has to be typed into this file.
-      # raillens.jwt.secret specifically needs >= 32 bytes (see JwtService)
-      # - Render's generated value satisfies that.
       - key: RAILLENS_JWT_SECRET
         generateValue: true
       - key: RAILLENS_ADMIN_API_KEY
         generateValue: true
-      # Set this to the deployed Vercel frontend's actual origin once it
-      # exists (e.g. https://raillens.vercel.app) - CORS silently rejects
-      # every request from any other origin until this is set correctly.
       - key: RAILLENS_CORS_ALLOWED_ORIGINS
         sync: false
 
-databases:
-  - name: raillens-db
-    plan: free
-    databaseName: traindb
-    user: raillens

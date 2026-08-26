@@ -9,14 +9,6 @@ import com.labs.train.train_db.service.network.RailwayNetworkService;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * "Railway Network" graph metrics (FEATURE.md) - public, unauthenticated,
- * same visibility level as StatsController's dataset statistics. Separate
- * controller (rather than folding into StatsController) since it's backed
- * by a different, heavier cache (NETWORK_CACHE vs STATS_CACHE) with its own
- * computation cost - keeping them apart makes that cost visible at the
- * routing level, not just in a code comment.
- */
 @RestController
 @RequestMapping("/api/v1/network")
 @RequiredArgsConstructor

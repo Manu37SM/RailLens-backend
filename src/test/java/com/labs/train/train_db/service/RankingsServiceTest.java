@@ -56,14 +56,6 @@ class RankingsServiceTest {
                 return schedule;
         }
 
-        /**
-         * Train 9001: A-B-C-D (2 halts: B 5min, C 45min).
-         * Train 9002: X-B-Y (1 halt: B 20min) - B is also the busiest/most
-         * connected station, appearing on both trains and linking to
-         * A, C, X, Y (degree 4). A is the only origin (9001's), X is the
-         * other origin (9002's) - both origins, so "most popular origin"
-         * is a tie broken by encounter order, not asserted strictly.
-         */
         @Test
         void ranksHaltsAndStationsCorrectly() {
 
@@ -96,29 +88,22 @@ class RankingsServiceTest {
 
                 RankingsResponse response = service().getRankings();
 
-                // 9001 has 2 halts (B, C), 9002 has 1 (B).
                 assertThat(response.mostHaltsTrains().get(0).trainNumber()).isEqualTo("9001");
                 assertThat(response.mostHaltsTrains().get(0).haltCount()).isEqualTo(2);
 
                 assertThat(response.fewestHaltsTrains().get(0).trainNumber()).isEqualTo("9002");
                 assertThat(response.fewestHaltsTrains().get(0).haltCount()).isEqualTo(1);
 
-                // Longest halt: 9001 at C, 45 minutes.
                 assertThat(response.longestHalts().get(0).trainNumber()).isEqualTo("9001");
                 assertThat(response.longestHalts().get(0).stationCode()).isEqualTo("C");
                 assertThat(response.longestHalts().get(0).minutes()).isEqualTo(45);
 
-                // Shortest halt: 9001 at B, 5 minutes.
                 assertThat(response.shortestHalts().get(0).stationCode()).isEqualTo("B");
                 assertThat(response.shortestHalts().get(0).minutes()).isEqualTo(5);
 
-                // B is the only station touched by both trains -> degree 4
-                // (A, C, X, Y), the highest of any station.
                 assertThat(response.mostConnectedStations().get(0).stationCode()).isEqualTo("B");
                 assertThat(response.mostConnectedStations().get(0).count()).isEqualTo(4);
 
-                // A and X are each an origin once - B is never an origin, so it
-                // must not appear at the top of this particular list.
                 assertThat(response.mostPopularOriginStations().get(0).count()).isEqualTo(1);
                 assertThat(response.mostPopularOriginStations())
                                 .extracting((RankingsResponse.StationCountEntry entry) -> entry.stationCode())

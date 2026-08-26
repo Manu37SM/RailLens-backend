@@ -8,10 +8,6 @@ public record AuthResponse(
 
                 long expiresInSeconds,
 
-                // Opaque, long-lived - exchange it at POST /api/auth/refresh for a
-                // new access token (and a new refreshToken - see
-                // RefreshTokenService's rotation model) once this one expires,
-                // instead of asking the user to log in again.
                 String refreshToken,
 
                 String username,

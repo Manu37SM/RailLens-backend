@@ -15,11 +15,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
-/**
- * Only tests the threshold difference from {@link RateLimitInterceptorTest}
- * - the shared bucketing/sweeping mechanics are already covered there via
- * {@link AbstractRateLimitInterceptor}.
- */
 @ExtendWith(MockitoExtension.class)
 class AuthRateLimitInterceptorTest {
 

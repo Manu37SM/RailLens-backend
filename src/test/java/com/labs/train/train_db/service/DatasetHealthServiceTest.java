@@ -86,13 +86,10 @@ class DatasetHealthServiceTest {
                 Station b = station("B");
                 Station orphan = station("ZZZ");
 
-                // 200km in 6 minutes = 2000 km/h - an impossible implied speed.
                 List<TrainSchedule> route = List.of(
                                 schedule(t, a, 1, null, LocalTime.of(8, 0), 0),
                                 schedule(t, b, 2, LocalTime.of(8, 6), null, 200));
 
-                // A second train with a genuinely impossible implied speed:
-                // 500km in 10 minutes.
                 Train fast = train(2L, "9002");
                 Station c = station("C");
                 Station d = station("D");
@@ -110,8 +107,6 @@ class DatasetHealthServiceTest {
 
                 DatasetHealthResponse response = service().checkHealth();
 
-                // Both trains imply a speed above the 200 km/h ceiling: 9001 at
-                // 2000 km/h (200km/6min) and 9002 at 3000 km/h (500km/10min).
                 assertThat(response.impossibleSpeedCount()).isEqualTo(2);
                 assertThat(response.impossibleSpeedSamples())
                                 .anySatisfy(sample -> assertThat(sample).contains("9001"))
@@ -150,7 +145,6 @@ class DatasetHealthServiceTest {
                 List<TrainSchedule> route = List.of(
                                 schedule(t, a, 1, null, LocalTime.of(8, 0), 0),
                                 schedule(t, b, 2, LocalTime.of(9, 0), LocalTime.of(12, 0), 100),
-                                // Duplicate sequence number 2.
                                 schedule(t, c, 2, LocalTime.of(13, 0), null, 200));
 
                 when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()).thenReturn(route);
@@ -160,8 +154,6 @@ class DatasetHealthServiceTest {
 
                 assertThat(response.duplicateScheduleRowCount()).isEqualTo(1);
 
-                // 3-hour halt at B (09:00 -> 12:00) exceeds the 180-minute
-                // threshold.
                 assertThat(response.haltAnomalyCount()).isGreaterThanOrEqualTo(1);
                 assertThat(response.haltAnomalySamples()).anySatisfy(sample -> assertThat(sample).contains("9004"));
         }

@@ -69,21 +69,15 @@ class FunStatsServiceTest {
 
                 FunStatsResponse response = service().getFunStats();
 
-                // "KSR Bengaluru City Junction" (27 chars) is the longest;
-                // "Halt" (4 chars) is the shortest.
                 assertThat(response.longestStationName().stationCode()).isEqualTo("SBC");
                 assertThat(response.shortestStationName().stationCode()).isEqualTo("A1A");
                 assertThat(response.shortestStationName().length()).isEqualTo(4);
 
-                // "Junction" appears in all 3 of A/B/C's names -> most common word.
                 assertThat(response.mostCommonStationNameWord().word()).isEqualTo("junction");
                 assertThat(response.mostCommonStationNameWord().count()).isEqualTo(3);
 
-                // "MAM" and "A1A" both read the same forwards and backwards.
                 assertThat(response.palindromeStationCodes()).containsExactlyInAnyOrder("MAM", "A1A");
 
-                // First-letter coverage: J(unction Road)->1, C(entral)->1,
-                // K(SR...)->1, H(alt)->1, everything else 0.
                 assertThat(response.stationCountByFirstLetter().get("J")).isEqualTo(1);
                 assertThat(response.stationCountByFirstLetter().get("C")).isEqualTo(1);
                 assertThat(response.stationCountByFirstLetter().get("K")).isEqualTo(1);

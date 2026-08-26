@@ -26,15 +26,6 @@ import lombok.extern.slf4j.Slf4j;
 @Transactional(readOnly = true)
 public class JourneyService {
 
-        // Every other list endpoint in this codebase caps its response size
-        // (RANKED_LIST_SIZE, MAX_RESULTS, SEARCH_PAGE_SIZE,
-        // PaginationConfig.MAX_PAGE_SIZE) - this one didn't, and unlike
-        // those, its size scales with real train traffic through two
-        // stations rather than a fixed dataset-wide top-N, so a pair of
-        // very high-traffic junctions could return an unbounded response.
-        // totalTrains still reports the true match count even when the
-        // returned list is capped, so the frontend/mobile can show "50 of
-        // 240 shown" rather than silently look wrong.
         private static final int MAX_RESULTS = 100;
 
         private final TrainScheduleRepository trainScheduleRepository;
@@ -58,10 +49,6 @@ public class JourneyService {
                                                 schedule -> schedule.getTrain().getId(),
                                                 Function.identity()));
 
-                // Filter down to the trains that actually qualify (correct
-                // direction, both stops have a known distance) before touching
-                // the schedule table again, so the batch route fetch below only
-                // asks for data we're actually going to use.
                 List<TrainSchedule> matchedSources = new ArrayList<>();
 
                 for (TrainSchedule source : sourceSchedules) {
@@ -87,15 +74,6 @@ public class JourneyService {
                         return new JourneySearchResponse(from, to, 0, List.of());
                 }
 
-                /*
-                 * Previously each matched train issued its own
-                 * findByTrain_TrainNumberOrderBySequenceNo query inside the loop
-                 * below - an N+1 query pattern that scales with the number of
-                 * trains between the two stations (backend architecture
-                 * review). Fetching every matched train's full route in one
-                 * query and grouping in memory turns that into a single round
-                 * trip regardless of result size.
-                 */
                 List<Long> matchedTrainIds = matchedSources.stream()
                                 .map(source -> source.getTrain().getId())
                                 .distinct()
@@ -107,9 +85,6 @@ public class JourneyService {
                                 .collect(Collectors.groupingBy(
                                                 schedule -> schedule.getTrain().getId()));
 
-                // Paired with its duration in minutes purely for sorting below -
-                // JourneyTrainResponse itself only carries the formatted string,
-                // since that's all the frontend has ever needed to display.
                 record ScoredJourney(JourneyTrainResponse response, long durationMinutes) {
                 }
 
@@ -143,15 +118,6 @@ public class JourneyService {
                                         analysis.durationMinutes()));
                 }
 
-                // Fastest first. Journeys with an unknown duration (missing
-                // arrival/departure time in the source data) sort last rather
-                // than first or being silently dropped - calculateDurationMinutes
-                // returns Long.MAX_VALUE for those, see its javadoc.
-                // Explicit lambdas rather than ScoredJourney::durationMinutes /
-                // ScoredJourney::response - the method-reference form on this
-                // local record trips the JDT null analyzer's "unchecked
-                // conversion for the receiver" warning; same behavior either
-                // way, this just avoids the false-positive warning.
                 List<JourneyTrainResponse> journeys = scored.stream()
                                 .sorted(java.util.Comparator.comparingLong((ScoredJourney sj) -> sj.durationMinutes()))
                                 .limit(MAX_RESULTS)
@@ -165,18 +131,6 @@ public class JourneyService {
                                 journeys);
         }
 
-        /**
-         * "Journey Analysis" (FEATURE.md) - everything JourneyTrainResponse
-         * reports beyond the original duration/distance, scoped to this one
-         * source-to-destination leg rather than the train's whole route (see
-         * TrainIntelligenceService for the whole-route versions of the same
-         * ideas). {@code durationMinutes} keeps the original
-         * {@code Long.MAX_VALUE}-for-unknown sentinel (see the old
-         * calculateDurationMinutes this replaces) so sorting by it still
-         * pushes unknown-duration journeys last; the other fields fall back
-         * to null/zero when times are missing, since there's nothing
-         * meaningful to report without them.
-         */
         private record JourneySegmentAnalysis(
                         long durationMinutes,
                         long movingMinutes,
@@ -240,10 +194,6 @@ public class JourneyService {
                         TrainSchedule from = route.get(i);
                         TrainSchedule to = route.get(i + 1);
 
-                        // The moving leg from this stop's departure to the next
-                        // stop's arrival - excludes the halt at `to` (added
-                        // separately below), same "halt vs. moving" split
-                        // TrainIntelligenceService uses for the whole route.
                         if (from.getDepartureTime() != null && to.getArrivalTime() != null) {
 
                                 LocalDateTime legStart = LocalDateTime.of(base.plusDays(journeyDays.get(i) - 1), from.getDepartureTime());
@@ -256,9 +206,6 @@ public class JourneyService {
                                 }
                         }
 
-                        // Halt at `to`, but only if `to` is an intermediate stop
-                        // (not the destination itself - alighting there isn't a
-                        // "halt" on this leg).
                         if (i + 1 < destinationIndex
                                         && to.getArrivalTime() != null && to.getDepartureTime() != null
                                         && !to.getDepartureTime().isBefore(to.getArrivalTime())) {

@@ -15,13 +15,6 @@ import com.labs.train.train_db.service.StatsService;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * Public, unauthenticated dataset statistics (PROMPT.md's "Statistics"
- * target feature) - total trains/stations, longest/shortest route, busiest
- * station. Deliberately not under /api/admin/** - this is "did you know"
- * content for any visitor, not an operational endpoint, unlike
- * AdminController's stats which exist to help the admin verify an import.
- */
 @RestController
 @RequestMapping("/api/v1/stats")
 @RequiredArgsConstructor
@@ -37,31 +30,16 @@ public class StatsController {
                 return statsService.getStats();
         }
 
-        /**
-         * "Rankings" leaderboards (FEATURE.md) - most/fewest halts, longest/
-         * shortest halt, most popular origin stations, most connected
-         * stations. See RankingsService for how each is derived.
-         */
         @GetMapping("/rankings")
         public RankingsResponse getRankings() {
                 return rankingsService.getRankings();
         }
 
-        /**
-         * "Fun Statistics" (FEATURE.md) - station-name/route trivia, distinct
-         * from the leaderboards above. See FunStatsService for how each field
-         * is derived.
-         */
         @GetMapping("/fun-facts")
         public FunStatsResponse getFunStats() {
                 return funStatsService.getFunStats();
         }
 
-        /**
-         * "Railway Achievements" (FEATURE.md) - top 100 longest/fastest, mega
-         * routes, super express rankings, rare routes, hidden gems. See
-         * AchievementsService for how each is derived.
-         */
         @GetMapping("/achievements")
         public AchievementsResponse getAchievements() {
                 return achievementsService.getAchievements();

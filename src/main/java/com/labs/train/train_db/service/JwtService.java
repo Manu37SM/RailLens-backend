@@ -14,20 +14,6 @@ import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * Signs and verifies the JWTs handed out by {@link AuthService}.
- *
- * Deliberately hand-rolled with jjwt rather than adopting the full Spring
- * Security filter-chain framework (see the comment above the jjwt/
- * spring-security-crypto dependencies in pom.xml) - this keeps the same
- * "small, explicit, fail-closed component" shape as {@code
- * AdminApiKeyInterceptor} and {@code RateLimitInterceptor} rather than
- * introducing a second, competing security paradigm alongside them.
- *
- * Fails closed at startup: if {@code raillens.jwt.secret} isn't configured
- * (or is too short for HS256), the application refuses to start rather than
- * silently issuing tokens that could be forged or brute-forced.
- */
 @Slf4j
 @Service
 public class JwtService {
@@ -63,11 +49,6 @@ public class JwtService {
                 return expirationMinutes * 60;
         }
 
-        /**
-         * Issues a signed JWT with the username as subject. Intentionally
-         * carries no roles/permissions claim yet - see the comment on {@code
-         * User.java} explaining why a role column hasn't been introduced.
-         */
         public String generateToken(String username) {
 
                 Date now = new Date();
@@ -81,13 +62,6 @@ public class JwtService {
                                 .compact();
         }
 
-        /**
-         * Validates the token's signature and expiry and returns the username
-         * (subject). Returns {@code null} on any failure (expired, malformed,
-         * bad signature) rather than throwing, so callers - e.g. an
-         * interceptor gating a protected route - can treat "invalid token" and
-         * "no token" the same way without a try/catch at every call site.
-         */
         public String validateAndGetUsername(String token) {
                 try {
                         Claims claims = Jwts.parser()

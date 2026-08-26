@@ -24,13 +24,6 @@ import com.labs.train.train_db.repository.StationRepository;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * "Fun Statistics" (FEATURE.md) - see FunStatsResponse for what each field
- * means. Deliberately separate from StatsService/RankingsService: those are
- * "useful" leaderboards, this is trivia - keeping it in its own service/
- * endpoint means a caller who only wants the serious numbers never pays for
- * (or has to filter out) the station-name/palindrome scan.
- */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -82,11 +75,6 @@ public class FunStatsService {
                                         continue;
                                 }
 
-                                // Explicit lambda rather than Integer::sum - avoids the
-                                // JDT null analyzer's "unchecked conversion" warning on
-                                // the boxed-Integer method-reference form; same behavior
-                                // either way (same pattern used elsewhere in this
-                                // codebase, e.g. StationNetworkNode#recordEdge).
                                 wordCounts.merge(normalized, 1, (a, b) -> a + b);
                         }
 
@@ -103,10 +91,6 @@ public class FunStatsService {
                         }
                 }
 
-                // Ties (e.g. "junction" and "road" both appearing 50 times) are
-                // broken by picking the alphabetically-first word, purely for
-                // deterministic output - there's no "correct" winner between
-                // equally-common words.
                 WordFrequency mostCommonWord = wordCounts.entrySet().stream()
                                 .max(Comparator
                                                 .<Map.Entry<String, Integer>>comparingInt(entry -> entry.getValue())
@@ -121,8 +105,6 @@ public class FunStatsService {
                                 longest, shortest, mostCommonWord, firstLetterCounts,
                                 trainWithMostUniqueStations, palindromes);
         }
-
-        // ------------------------------------------------------------
 
         private boolean isPalindrome(String code) {
 
@@ -143,9 +125,6 @@ public class FunStatsService {
 
         private TrainStopEntry mostUniqueStationsTrain() {
 
-                // Shared cached snapshot (see ScheduleSnapshotService) instead of
-                // querying the repository directly - avoids this endpoint being
-                // one more independent ~300k-row load on a cold cache.
                 Map<Long, List<TrainSchedule>> schedulesByTrainId = scheduleSnapshotService
                                 .getAllOrderedByTrainThenSequence()
                                 .stream()

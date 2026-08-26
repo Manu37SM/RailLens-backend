@@ -19,35 +19,15 @@ import com.labs.train.train_db.repository.TrainScheduleRepository;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * "Dataset Health" diagnostics (FEATURE.md) - see DatasetHealthResponse's
- * javadoc for how this differs from the Python import-time validator.
- * Deliberately NOT cached (unlike Stats/Rankings/FunStats/Achievements) -
- * this is an admin-only, low-traffic diagnostic endpoint an operator hits
- * after suspecting a data problem, so a stale cached "everything's fine"
- * result would defeat the point; the one-time full-table-scan cost on each
- * call is an acceptable trade-off for a rarely-hit admin endpoint.
- */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class DatasetHealthService {
 
-        // Exact counts are always accurate; sample lists exist only to give an
-        // operator somewhere to start looking, not to be exhaustive.
         private static final int MAX_SAMPLES = 20;
 
-        // Fastest scheduled Indian trains (Vande Bharat, Gatimaan Express) top
-        // out around 160-180 km/h - 200 km/h is a documented, deliberately
-        // generous ceiling above that so this only flags genuinely impossible
-        // data (e.g. a data-entry error implying teleportation), not merely
-        // "fast."
         private static final double MAX_PLAUSIBLE_SPEED_KMH = 200.0;
 
-        // A halt this long is unusual enough to be worth a human glance, even
-        // though some real halts (e.g. engine reversal, long junction waits)
-        // legitimately run this long - a documented heuristic, not a hard
-        // data-integrity rule like the other checks here.
         private static final long LONG_HALT_MINUTES_THRESHOLD = 180;
 
         private final StationRepository stationRepository;
@@ -190,8 +170,6 @@ public class DatasetHealthService {
                                 orphanStationCount, cap(orphanStationSamples),
                                 invalidRouteCount, cap(invalidRouteSamples));
         }
-
-        // ------------------------------------------------------------
 
         private Double segmentSpeedKmh(TrainSchedule from, TrainSchedule to) {
 

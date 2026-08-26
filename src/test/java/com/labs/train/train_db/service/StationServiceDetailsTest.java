@@ -26,10 +26,6 @@ import com.labs.train.train_db.model.StationTrainResponse;
 import com.labs.train.train_db.repository.StationRepository;
 import com.labs.train.train_db.repository.TrainScheduleRepository;
 
-/**
- * Covers getStation() (StationServiceSearchTest explicitly scopes itself to
- * only search()/fuzzySearch(), same as TrainServiceSearchTest for trains).
- */
 @ExtendWith(MockitoExtension.class)
 class StationServiceDetailsTest {
 

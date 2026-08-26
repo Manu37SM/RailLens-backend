@@ -23,20 +23,11 @@ import com.labs.train.train_db.service.network.StationNetworkNode;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * "Rankings" leaderboards (FEATURE.md) - most/fewest halts per train,
- * longest/shortest individual halt, most popular origin stations, and most
- * connected stations. See StatsService for the pre-existing fastest/
- * slowest-train and busiest-station leaderboards this deliberately doesn't
- * duplicate.
- */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class RankingsService {
 
-        // Same reasoning as StatsService.RANKED_LIST_SIZE - a public,
-        // rate-limited endpoint, nobody needs more than a top-10 view.
         private static final int RANKED_LIST_SIZE = 10;
 
         private final RailwayNetworkService railwayNetworkService;
@@ -45,9 +36,6 @@ public class RankingsService {
         @Cacheable(cacheNames = CacheConfig.RANKINGS_CACHE)
         public RankingsResponse getRankings() {
 
-                // Shared cached snapshot (see ScheduleSnapshotService) instead of
-                // querying the repository directly - avoids this endpoint being
-                // one more independent ~300k-row load on a cold cache.
                 Map<Long, List<TrainSchedule>> schedulesByTrainId = scheduleSnapshotService
                                 .getAllOrderedByTrainThenSequence()
                                 .stream()
@@ -86,11 +74,6 @@ public class RankingsService {
                         }
                 }
 
-                // Explicit lambdas rather than HaltCountEntry::haltCount /
-                // HaltDurationEntry::minutes - same JDT null-analyzer
-                // "unchecked conversion for the receiver" false positive on
-                // record-accessor method references noted elsewhere in this
-                // codebase (see StatsService); behaviorally identical.
                 List<HaltCountEntry> mostHalts = haltCounts.stream()
                                 .sorted(Comparator.comparingInt((HaltCountEntry entry) -> entry.haltCount()).reversed())
                                 .limit(RANKED_LIST_SIZE)
@@ -106,10 +89,6 @@ public class RankingsService {
                                 .limit(RANKED_LIST_SIZE)
                                 .toList();
 
-                // Zero-minute "technical halts" (arrival == departure) are
-                // excluded from "shortest halt" - they're not a meaningful stop
-                // duration a passenger experiences, just noise that would
-                // otherwise dominate this particular leaderboard.
                 List<HaltDurationEntry> shortestHalts = haltDurations.stream()
                                 .filter(entry -> entry.minutes() > 0)
                                 .sorted(Comparator.comparingLong((HaltDurationEntry entry) -> entry.minutes()))
@@ -118,12 +97,6 @@ public class RankingsService {
 
                 RailwayNetworkSnapshot network = railwayNetworkService.buildSnapshot();
 
-                // Stations that have never been an origin (originCount == 0)
-                // must not pad out this leaderboard - on the real dataset
-                // there are always far more than RANKED_LIST_SIZE actual
-                // origins so this never mattered in practice, but with a
-                // small station set (e.g. tests) it silently let 0-count
-                // stations fill the remaining slots.
                 List<StationCountEntry> mostPopularOrigins = network.stations.values().stream()
                                 .filter(node -> node.originCount > 0)
                                 .sorted(Comparator.comparingInt(

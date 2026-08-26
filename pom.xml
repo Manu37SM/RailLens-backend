@@ -7,7 +7,7 @@
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
 		<version>4.1.0</version>
-		<relativePath /> <!-- lookup parent from repository -->
+		<relativePath />
 	</parent>
 	<groupId>com.labs.train</groupId>
 	<artifactId>train-db</artifactId>
@@ -46,28 +46,7 @@
 			<artifactId>spring-boot-starter-validation</artifactId>
 		</dependency>
 
-		<!--
-			Versioned schema migrations (see src/main/resources/db/migration
-			and the Database Schema Review's "no versioned migrations" P1
-			finding). Both versions are managed by spring-boot-starter-parent's
-			BOM, so no explicit <version> here. flyway-database-postgresql is a
-			separate artifact as of Flyway 10+ (split out of flyway-core) and
-			is required for Postgres support - flyway-core alone is not
-			enough.
 
-			spring-boot-starter-flyway is ALSO required, separately from
-			flyway-core - Spring Boot 4's modular autoconfiguration split
-			FlywayAutoConfiguration (now in org.springframework.boot.flyway.
-			autoconfigure) into its own starter module. Without it, Spring
-			Boot never even attempts to run Flyway: no error, no log line at
-			any level (confirmed by setting logging.level.org.flywaydb=DEBUG
-			and seeing nothing), it just silently never registers the
-			auto-configuration - the DataSource goes straight to JPA/
-			Hibernate with no migration step in between. Same category of
-			gotcha as spring-boot-starter-jackson above, a second instance of
-			Boot 4's modularization that isn't obvious from flyway-core alone
-			still being a valid, resolvable dependency.
-		-->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-flyway</artifactId>
@@ -84,28 +63,13 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc</artifactId>
 		</dependency>
-		<!--
-			Spring Boot 4 split Jackson out of spring-boot-starter-webmvc into
-			its own starter (it used to be bundled automatically via
-			spring-boot-starter-json in Spring Boot 3). Without this, every
-			@RestController here would fail to serialize its JSON response at
-			runtime - this was missing before this change, not something this
-			session's edits introduced.
-		-->
+
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-jackson</artifactId>
 		</dependency>
 
-		<!--
-			In-process caching for read-heavy, relatively static lookups
-			(train/station details) - see CacheConfig. Caffeine over the
-			simpler ConcurrentMapCacheManager specifically because it supports
-			a size bound and TTL out of the box, so a missed cache-eviction
-			path degrades to "briefly stale data" instead of "unbounded memory
-			growth". Open-source, in-process, no new infrastructure - fits the
-			project's cost philosophy of preferring free/self-hosted options.
-		-->
+
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-cache</artifactId>
@@ -115,30 +79,13 @@
 			<artifactId>caffeine</artifactId>
 		</dependency>
 
-		<!--
-			Login/register system (see AuthController/AuthService). Deliberately
-			NOT pulling in the full spring-security-web filter-chain framework -
-			this codebase already has a working hand-rolled interceptor pattern
-			(AdminApiKeyInterceptor, RateLimitInterceptor) and adopting Spring
-			Security's filter chain / UserDetailsService / SecurityContext model
-			on top of that would be two competing security paradigms in the same
-			app. spring-security-crypto is the one part of Spring Security that's
-			genuinely useful standalone: a properly-reviewed, industry-standard
-			BCrypt implementation, instead of hand-rolling password hashing.
-		-->
+
 		<dependency>
 			<groupId>org.springframework.security</groupId>
 			<artifactId>spring-security-crypto</artifactId>
 		</dependency>
 
-		<!--
-			JWT issuance/verification for the login system. Chosen over session
-			cookies because PROMPT.md's stated goal is Android/iOS clients
-			consuming the same REST API - a stateless bearer token works the
-			same way for a browser fetch() call and a mobile HTTP client,
-			whereas cookie-based sessions are a browser-specific mechanism that
-			would need to be reinvented for mobile later anyway.
-		-->
+
 		<dependency>
 			<groupId>io.jsonwebtoken</groupId>
 			<artifactId>jjwt-api</artifactId>
@@ -157,16 +104,7 @@
 			<scope>runtime</scope>
 		</dependency>
 
-		<!--
-			API documentation (Swagger UI at /swagger-ui.html, raw spec at
-			/v3/api-docs), generated from the existing controllers/DTOs rather
-			than hand-maintained - see PROMPT.md's Backend Principles ("Design
-			APIs suitable for... future third-party developers") and CHECKLIST
-			Phase 7/8. v3.0.x is the first line of springdoc-openapi with
-			official Spring Boot 4 / Spring Framework 7 support (verified via
-			web search, not assumed, after getting burned once already this
-			project by a Boot-4-incompatible assumption around Jackson).
-		-->
+
 		<dependency>
 			<groupId>org.springdoc</groupId>
 			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
@@ -198,9 +136,7 @@
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
 			<scope>test</scope>
 		</dependency>
-		<!-- opencsv removed - RailwayDataImportService uses Apache
-		     commons-csv (CSVFormat/CSVParser) exclusively; opencsv was an
-		     unused dependency (backend architecture review finding). -->
+
 		<dependency>
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-csv</artifactId>
@@ -261,21 +197,7 @@
 		</plugins>
 	</build>
 
-	<!--
-		Opt-in, not run on every `mvn package`/`mvn install` - see
-		.github/dependabot.yml for the always-on scanning this project
-		actually relies on day to day. dependency-check-maven needs to
-		download/update a large NVD CVE database on first run (and, since
-		the NVD API rate-limits unauthenticated callers hard, is much
-		slower/flakier without an NVD_API_KEY - see
-		https://nvd.nist.gov/developers/request-an-api-key), which is a bad
-		fit for a solo-dev's normal inner-loop build. Run it explicitly
-		when wanted:
 
-			mvn -Psecurity-scan verify
-
-		HTML report lands in target/dependency-check-report.html.
-	-->
 	<profiles>
 		<profile>
 			<id>security-scan</id>

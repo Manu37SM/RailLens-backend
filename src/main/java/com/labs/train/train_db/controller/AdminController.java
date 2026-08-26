@@ -13,15 +13,6 @@ import com.labs.train.train_db.service.DatasetHealthService;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * Admin endpoints backing the Admin Portal (see train-db-frontend's
- * app/admin). Kept separate from RailwayDataImportController, which owns
- * the one endpoint that touches train/station/schedule data itself (POST
- * /api/v1/admin/import) - everything here is either read-only or, for
- * cache clearing, only ever affects the cache layer, never the database.
- * Both controllers share the /api/v1/admin/** prefix, so both are covered
- * by AdminApiKeyInterceptor without needing their own auth wiring.
- */
 @RestController
 @RequestMapping("/api/v1/admin")
 @RequiredArgsConstructor
@@ -35,11 +26,6 @@ public class AdminController {
                 return adminService.getStats();
         }
 
-        /**
-         * "Dataset Health" diagnostics (FEATURE.md) - see
-         * DatasetHealthResponse for what each check covers and how it differs
-         * from the Python import-time validator in rail-dataset-analyzer.
-         */
         @GetMapping("/health")
         public DatasetHealthResponse getDatasetHealth() {
                 return datasetHealthService.checkHealth();

@@ -78,15 +78,6 @@ class TrainIntelligenceServiceTest {
                                 .hasMessageContaining("99999");
         }
 
-        /**
-         * A-B-C-D, single train, all hand-computable:
-         *  - A depart 08:00 (distance 0)
-         *  - B arrive 09:00 / depart 09:10 (distance 100, 10 min halt)
-         *  - C arrive 21:30 / depart 21:40 (distance 400, 10 min halt)
-         *  - D arrive 23:00 (distance 600)
-         *
-         * totalDistance = 600, journeyMinutes = 08:00->23:00 = 900.
-         */
         @Test
         void computesExactMetricsForAHandComputableRoute() {
 
@@ -110,47 +101,27 @@ class TrainIntelligenceServiceTest {
                 assertThat(response.trainNumber()).isEqualTo("9001");
                 assertThat(response.trainName()).isEqualTo("Train 9001");
 
-                // expressness = totalDistance / halts = 600 / 3.
                 assertThat(response.expressnessScoreKmPerHalt()).isCloseTo(200.0, within(0.01));
 
-                // longest non-stop segment: A-B=100, B-C=300, C-D=200 -> B-C.
                 assertThat(response.longestNonStopSegmentKm()).isEqualTo(300);
                 assertThat(response.longestNonStopSegmentFromStation()).isEqualTo("B");
                 assertThat(response.longestNonStopSegmentToStation()).isEqualTo("C");
 
-                // average halt = (10 + 10) / 2.
                 assertThat(response.averageHaltMinutes()).isCloseTo(10.0, within(0.01));
 
-                // route complexity = 4*1.5 + 600/100 + 900/60*2 = 6 + 6 + 30 = 42.
                 assertThat(response.routeComplexityScore()).isCloseTo(42.0, within(0.01));
 
-                // efficiency = min(100, (600/(900/60)) / 130 * 100) = (40/130*100).
                 assertThat(response.journeyEfficiencyIndex()).isCloseTo(40.0 / 130.0 * 100.0, within(0.1));
 
-                // Night window is 21:00-06:00. Moving legs (departure->next
-                // arrival, excluding halts): A->B 08:00-09:00 (0 night),
-                // B->C 09:10-21:30 (30 min in [21:00,21:30)),
-                // C->D 21:40-23:00 (all 80 min, fully inside [21:00,24:00)).
-                // Total moving = 60+740+80 = 880; night = 0+30+80 = 110.
-                // 110/880 = 12.5%.
                 assertThat(response.nightTravelPercent()).isCloseTo(12.5, within(0.1));
                 assertThat(response.dayTravelPercent()).isCloseTo(87.5, within(0.1));
 
-                // Only train on every hop of its own route -> fully unique.
                 assertThat(response.trainUniquenessScore()).isCloseTo(100.0, within(0.1));
                 assertThat(response.possiblySkippedStations()).isEmpty();
 
-                // Origin A != destination D.
                 assertThat(response.isCircularRoute()).isFalse();
         }
 
-        /**
-         * 9001 runs A->C directly (one hop). 9003 duplicates that same A-C
-         * hop (so it's shared, not unique). 9004 runs A->X->C, making X a
-         * direct network neighbor of both A and C - exactly the condition
-         * #possiblySkippedStations flags as "this train's direct hop
-         * plausibly bypasses X."
-         */
         @Test
         void computesUniquenessAndFlagsAPlausiblySkippedStation() {
 
@@ -188,7 +159,6 @@ class TrainIntelligenceServiceTest {
 
                 TrainIntelligenceResponse response = service().getIntelligence("9001");
 
-                // A-C hop is shared by 9001 and 9003 -> 1/2 -> 50.
                 assertThat(response.trainUniquenessScore()).isCloseTo(50.0, within(0.1));
 
                 assertThat(response.possiblySkippedStations()).containsExactly("X");

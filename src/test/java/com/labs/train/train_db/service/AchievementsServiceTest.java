@@ -67,14 +67,6 @@ class AchievementsServiceTest {
                 return schedule;
         }
 
-        /**
-         * Train 9001: A-B-C-D-E, unique to itself on every hop (super express
-         * candidate + rare route candidate: distance 600km over 3 halts =
-         * 200 km/halt; average trains-per-hop = 1.0, the rarest possible).
-         * Train 9002: A-B duplicates 9001's A-B hop, so that hop has 2 trains
-         * on it - 9002 is a plain direct (0-halt) train and is excluded from
-         * super express rankings (no halts to average over).
-         */
         @Test
         void computesSuperExpressAndRareRouteAwards() {
 
@@ -110,18 +102,14 @@ class AchievementsServiceTest {
 
                 assertThat(response.superExpressRankings()).hasSize(1);
                 assertThat(response.superExpressRankings().get(0).trainNumber()).isEqualTo("9001");
-                // 600km / 3 halts = 200 km/halt.
                 assertThat(response.superExpressRankings().get(0).kmPerHalt()).isEqualTo(200.0);
 
-                // 9001's hops: A-B shared with 9002 (2 trains), B-C/C-D/D-E
-                // exclusive to 9001 (1 train each) -> average = (2+1+1+1)/4 = 1.25.
                 assertThat(response.rareRoutes())
                                 .anySatisfy(entry -> {
                                         assertThat(entry.trainNumber()).isEqualTo("9001");
                                         assertThat(entry.averageTrainsPerHop()).isEqualTo(1.25);
                                 });
 
-                // 9002 is a direct (0-halt) train - not in mega/super-express.
                 assertThat(response.megaRoutes()).isEmpty();
 
                 assertThat(response.longestRoutes()).hasSize(1);

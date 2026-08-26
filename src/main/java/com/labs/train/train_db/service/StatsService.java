@@ -24,9 +24,6 @@ import lombok.RequiredArgsConstructor;
 @Transactional(readOnly = true)
 public class StatsService {
 
-        // Ranked lists are capped rather than returning everything - this is a
-        // public, unauthenticated, rate-limited endpoint, and nobody scrolling
-        // a "fastest trains" list needs all 8,000+ of them.
         private static final int RANKED_LIST_SIZE = 10;
 
         private final TrainRepository trainRepository;
@@ -49,17 +46,9 @@ public class StatsService {
 
                 StationTrafficProjection busiestStation = firstOrNull(busiestStations);
 
-                // Shared cached snapshot (see ScheduleSnapshotService) instead of
-                // querying the repository directly - avoids this endpoint being
-                // one more independent ~300k-row load on a cold cache.
                 List<TrainSpeedProjection> trainSpeeds = TrainSpeedCalculator.computeAll(
                                 scheduleSnapshotService.getAllOrderedByTrainThenSequence(), journeyDayCalculator);
 
-                // Explicit lambdas rather than TrainSpeedProjection::averageSpeedKmh -
-                // the method-reference form trips the JDT null analyzer's
-                // "unchecked conversion for the receiver" warning on a record
-                // accessor used as a ToDoubleFunction; behaviorally identical,
-                // just avoids the false-positive warning.
                 List<TrainSpeedProjection> fastestTrains = trainSpeeds.stream()
                                 .sorted(Comparator.comparingDouble((TrainSpeedProjection p) -> p.averageSpeedKmh()).reversed())
                                 .limit(RANKED_LIST_SIZE)

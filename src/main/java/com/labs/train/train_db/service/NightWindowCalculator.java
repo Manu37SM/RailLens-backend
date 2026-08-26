@@ -4,16 +4,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 
-/**
- * How many minutes of a [start, end) time range fall inside "night" hours
- * (21:00-06:00, the conventional window IRCTC and most Indian journey
- * planners use for "night travel" warnings). Extracted from
- * TrainIntelligenceService (where this was originally written for its
- * whole-route night/day split) so JourneyService's per-segment night/day
- * analysis can reuse the exact same definition instead of re-implementing
- * it - see both callers for how the resulting minute count is turned into
- * a percentage.
- */
 final class NightWindowCalculator {
 
         private NightWindowCalculator() {

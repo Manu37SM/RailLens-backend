@@ -25,10 +25,6 @@ public interface StationRepository extends JpaRepository<Station, Long> {
             """)
     Page<Station> search(@Param("query") String query, Pageable pageable);
 
-    /**
-     * Code+name only, for every station - backs the fuzzy-search fallback,
-     * same reasoning as TrainRepository#findAllSearchKeys.
-     */
     @Query("SELECT new com.labs.train.train_db.model.StationSearchResponse(s.stationCode, s.stationName) FROM Station s")
     List<StationSearchResponse> findAllSearchKeys();
 

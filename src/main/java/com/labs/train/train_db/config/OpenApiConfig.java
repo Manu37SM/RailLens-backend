@@ -10,17 +10,6 @@ import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Contact;
 import io.swagger.v3.oas.models.info.Info;
 
-/**
- * Metadata shown at the top of Swagger UI (/swagger-ui.html) and in the raw
- * spec (/v3/api-docs). springdoc generates the actual paths/schemas from
- * the existing controllers and DTOs automatically - this class only adds
- * the human-facing description, not the endpoint list itself.
- *
- * Documents the bearer-token scheme for /api/v1/auth/me here rather than
- * relying on springdoc to infer it, since that route is protected by a
- * plain HandlerInterceptor (JwtAuthInterceptor) rather than Spring
- * Security, which springdoc can't introspect automatically.
- */
 @Configuration
 @SecurityScheme(
                 name = "bearerAuth",
@@ -30,14 +19,6 @@ import io.swagger.v3.oas.models.info.Info;
                 in = SecuritySchemeIn.HEADER)
 public class OpenApiConfig {
 
-        // Rendered as Markdown by Swagger UI - kept here (rather than a
-        // separate frontend docs page) so it stays next to the spec it
-        // describes and can never drift out of sync with the actual base
-        // path/endpoints. Every /api/v1/** route is unauthenticated read
-        // access except /api/v1/auth/** (bearer JWT - see the
-        // @SecurityScheme above) and /api/v1/admin/** (X-Admin-Key header,
-        // intentionally omitted here since that's an internal route, not
-        // part of the public API).
         private static final String DESCRIPTION = """
                         Public REST API for RailLens - Indian Railway train, station and journey \
                         information. Designed for the RailLens web frontend and future Android/iOS \

@@ -62,7 +62,7 @@ class RefreshTokenServiceTest {
                 assertThat(saved.getUser()).isEqualTo(user);
                 assertThat(saved.getTokenHash())
                                 .isNotEqualTo(rawToken)
-                                .hasSize(64); // hex-encoded SHA-256 is always 64 chars.
+                                .hasSize(64);
                 assertThat(saved.getExpiresAt()).isAfter(LocalDateTime.now().plusDays(29));
         }
 
@@ -91,8 +91,6 @@ class RefreshTokenServiceTest {
                 assertThat(rotated.rawToken()).isNotBlank();
                 assertThat(existing.isRevoked()).isTrue();
 
-                // save() is called once for revoking the existing token and once
-                // more inside issue() for the replacement.
                 verify(refreshTokenRepository, org.mockito.Mockito.times(2)).save(any());
         }
 

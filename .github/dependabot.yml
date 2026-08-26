@@ -1,13 +1,3 @@
-# GitHub Dependabot - free, zero-maintenance dependency scanning/updates.
-# Chosen over wiring an OWASP dependency-check Maven execution into every
-# `mvn package` because that plugin needs a large NVD CVE database
-# download (and, since the NVD API rate-limits unauthenticated callers
-# hard, effectively an API key) just to run - a poor fit for a solo-dev
-# project's normal build loop. Dependabot instead runs on GitHub's side on
-# a schedule and opens a PR when a dependency has a known vulnerability or
-# a newer version, which is enough for this project's size. See
-# pom.xml's dependency-check-maven profile for an opt-in, on-demand deeper
-# scan if one is ever needed locally.
 version: 2
 updates:
   - package-ecosystem: "maven"

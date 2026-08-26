@@ -38,12 +38,6 @@ public class StationService {
         private final StationRepository stationRepository;
         private final TrainScheduleRepository trainScheduleRepository;
 
-        /**
-         * Duplicate station codes are rejected by the database's unique
-         * constraint (see {@code GlobalExceptionHandler}'s handling of
-         * {@code DataIntegrityViolationException}) rather than a separate
-         * existence check here.
-         */
         @Transactional
         public StationSearchResponse createStation(CreateStationRequest request) {
 
@@ -60,10 +54,6 @@ public class StationService {
                                 saved.getStationName());
         }
 
-        /**
-         * Backs {@code GET /api/stations}. See {@code TrainService#getAllTrains}
-         * for why this is paginated rather than returning every row.
-         */
         public Page<StationSearchResponse> getAllStations(Pageable pageable) {
 
                 log.info("Listing stations, page {} size {}", pageable.getPageNumber(), pageable.getPageSize());
@@ -101,20 +91,11 @@ public class StationService {
                 return result;
         }
 
-        /**
-         * Typo-tolerant fallback for when the primary LIKE search (above)
-         * finds nothing. See TrainService#fuzzySearch / FuzzyMatch's javadoc
-         * for the full reasoning - same pattern, applied to stations.
-         */
         private List<StationSearchResponse> fuzzySearch(String query) {
 
                 String queryLower = query.toLowerCase(Locale.ROOT);
                 int maxDistance = FuzzyMatch.maxDistanceFor(queryLower.length());
 
-                // Explicit lambdas rather than Map.Entry::getValue/getKey - avoids
-                // the JDT null analyzer's "unchecked conversion for the
-                // receiver" warning on the method-reference form; same behavior
-                // either way.
                 return fuzzySearchIndex().stream()
                                 .map(station -> Map.entry(station, fuzzyScore(station, queryLower)))
                                 .filter(entry -> entry.getValue() <= maxDistance)
@@ -135,20 +116,11 @@ public class StationService {
                 return best;
         }
 
-        /**
-         * Every station's code+name, cached (SEARCH_INDEX_CACHE) - see
-         * CacheConfig. Candidate list #fuzzySearch scores against.
-         */
         @Cacheable(cacheNames = CacheConfig.SEARCH_INDEX_CACHE, key = "'stations'")
         public List<StationSearchResponse> fuzzySearchIndex() {
                 return stationRepository.findAllSearchKeys();
         }
 
-        /**
-         * Cached for the same reason as TrainService#getTrainDetails - a
-         * relatively small set of stations get looked up repeatedly by many
-         * different users. See CacheConfig for the eviction strategy.
-         */
         @Cacheable(cacheNames = CacheConfig.STATION_DETAILS_CACHE, key = "#stationCode")
         public StationResponse getStation(String stationCode) {
 
@@ -169,13 +141,6 @@ public class StationService {
                                 trains);
         }
 
-        /**
-         * Builds the list of trains serving a station without firing per-train
-         * queries (the earlier version did two queries per train to establish
-         * origin/destination). All schedules for the affected trains are loaded
-         * in a single query and grouped by train id, so a station with N trains
-         * costs O(1) round trips instead of O(2N).
-         */
         private List<StationTrainResponse> buildStationTrains(List<TrainSchedule> stationSchedules) {
 
                 if (stationSchedules.isEmpty()) {

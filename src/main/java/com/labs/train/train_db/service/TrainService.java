@@ -40,13 +40,6 @@ public class TrainService {
         private final TrainScheduleRepository trainScheduleRepository;
         private final JourneyDayCalculator journeyDayCalculator;
 
-        /**
-         * Duplicate train numbers are rejected by the database's unique
-         * constraint (see {@code GlobalExceptionHandler}'s handling of
-         * {@code DataIntegrityViolationException}) rather than a separate
-         * existence check here - avoids a check-then-act race and keeps this
-         * method to a single round trip.
-         */
         @Transactional
         public TrainSearchResponse createTrain(CreateTrainRequest request) {
 
@@ -63,14 +56,6 @@ public class TrainService {
                                 saved.getTrainName());
         }
 
-        /**
-         * Backs {@code GET /api/trains}. Previously this returned every train
-         * in the database as raw entities in one response - fine at a few
-         * hundred rows, unworkable once the dataset covers the full IR
-         * timetable (~8,000+ trains). Now paginated and mapped to the same
-         * DTO used by search, so a caller can't tell which path produced the
-         * response.
-         */
         public Page<TrainSearchResponse> getAllTrains(Pageable pageable) {
 
                 log.info("Listing trains, page {} size {}", pageable.getPageNumber(), pageable.getPageSize());
@@ -110,23 +95,11 @@ public class TrainService {
                 return result;
         }
 
-        /**
-         * Typo-tolerant fallback for when the primary LIKE search (above)
-         * finds nothing - e.g. "Rajdani" instead of "Rajdhani". Only reached
-         * on that zero-result path, never on the common case, so the cost of
-         * scanning the cached full-table index (see #fuzzySearchIndex) is
-         * paid rarely. See FuzzyMatch's javadoc for why this is a plain-Java
-         * Levenshtein distance rather than a Postgres trigram extension.
-         */
         private List<TrainSearchResponse> fuzzySearch(String query) {
 
                 String queryLower = query.toLowerCase(Locale.ROOT);
                 int maxDistance = FuzzyMatch.maxDistanceFor(queryLower.length());
 
-                // Explicit lambdas rather than Map.Entry::getValue/getKey - avoids
-                // the JDT null analyzer's "unchecked conversion for the
-                // receiver" warning on the method-reference form; same behavior
-                // either way.
                 return fuzzySearchIndex().stream()
                                 .map(train -> Map.entry(train, fuzzyScore(train, queryLower)))
                                 .filter(entry -> entry.getValue() <= maxDistance)
@@ -147,22 +120,11 @@ public class TrainService {
                 return best;
         }
 
-        /**
-         * Every train's number+name, cached (SEARCH_INDEX_CACHE) - see that
-         * cache's javadoc in CacheConfig for why. This is the candidate list
-         * #fuzzySearch scores against.
-         */
         @Cacheable(cacheNames = CacheConfig.SEARCH_INDEX_CACHE, key = "'trains'")
         public List<TrainSearchResponse> fuzzySearchIndex() {
                 return trainRepository.findAllSearchKeys();
         }
 
-        /**
-         * Cached: a train's schedule almost never changes minute-to-minute,
-         * but a popular train's detail page can be hit by many different
-         * users. See CacheConfig for the eviction strategy that keeps this
-         * from ever serving a schedule that no longer matches the database.
-         */
         @Cacheable(cacheNames = CacheConfig.TRAIN_DETAILS_CACHE, key = "#trainNumber")
         public TrainDetailsResponse getTrainDetails(String trainNumber) {
 

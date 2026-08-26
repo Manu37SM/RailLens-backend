@@ -18,7 +18,6 @@ class FuzzyMatchTest {
 
     @Test
     void singleCharacterDropHasDistanceOne() {
-        // "rajdani" is "rajdhani" with the 'h' dropped.
         assertThat(FuzzyMatch.distance("rajdhani", "rajdani")).isEqualTo(1);
     }
 

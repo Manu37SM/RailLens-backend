@@ -24,10 +24,6 @@ import com.labs.train.train_db.model.TrainSearchResponse;
 import com.labs.train.train_db.repository.TrainRepository;
 import com.labs.train.train_db.repository.TrainScheduleRepository;
 
-/**
- * Covers getTrainDetails(), the one TrainService method TrainServiceSearchTest
- * explicitly leaves out of scope.
- */
 @ExtendWith(MockitoExtension.class)
 class TrainServiceDetailsTest {
 
@@ -129,7 +125,6 @@ class TrainServiceDetailsTest {
                 Station c = station("BPL", "Bhopal Jn");
 
                 TrainSchedule first = schedule(train, a, 1, LocalTime.of(7, 0), LocalTime.of(8, 0), 0);
-                // 10 minute halt at the middle stop.
                 TrainSchedule middle = schedule(train, b, 2, LocalTime.of(9, 30), LocalTime.of(9, 40), 200);
                 TrainSchedule last = schedule(train, c, 3, LocalTime.of(14, 0), LocalTime.of(14, 30), 700);
 
@@ -139,9 +134,9 @@ class TrainServiceDetailsTest {
                 TrainDetailsResponse response = trainService().getTrainDetails("12301");
 
                 List<RouteStopResponse> route = response.route();
-                assertThat(route.get(0).haltMinutes()).isZero(); // origin
-                assertThat(route.get(1).haltMinutes()).isEqualTo(10); // intermediate
-                assertThat(route.get(2).haltMinutes()).isZero(); // destination
+                assertThat(route.get(0).haltMinutes()).isZero();
+                assertThat(route.get(1).haltMinutes()).isEqualTo(10);
+                assertThat(route.get(2).haltMinutes()).isZero();
         }
 
         @Test
@@ -210,8 +205,6 @@ class TrainServiceDetailsTest {
                 Station a = station("NDLS", "New Delhi");
                 Station b = station("HWH", "Howrah Jn");
 
-                // Departs 23:00, arrives 03:00 next day = 4h = 240 minutes.
-                // 480 km / 4h = 120 km/h.
                 TrainSchedule first = schedule(train, a, 1, null, LocalTime.of(23, 0), 0);
                 TrainSchedule last = schedule(train, b, 2, LocalTime.of(3, 0), null, 480);
 
@@ -231,7 +224,6 @@ class TrainServiceDetailsTest {
                 Station a = station("NDLS", "New Delhi");
                 Station b = station("AGC", "Agra Cantt");
 
-                // No departure time at the first stop -> journeyMinutes is 0.
                 TrainSchedule first = schedule(train, a, 1, null, null, 0);
                 TrainSchedule last = schedule(train, b, 2, LocalTime.of(9, 30), null, 200);
 

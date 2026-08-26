@@ -42,14 +42,6 @@ public class RailwayDataImportService {
     private final RailwayImportBatchService batchService;
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("H:mm");
 
-    /**
-     * A single already-parsed CSV row, handed off to
-     * {@link RailwayImportBatchService} for persistence. Parsing (this
-     * class) and persisting (the batch service, one {@code REQUIRES_NEW}
-     * transaction per {@link AppConstants#IMPORT_BATCH_SIZE} rows) are
-     * deliberately separate steps now - see RailwayImportBatchService's
-     * javadoc for why.
-     */
     public record ParsedRow(
                     String trainNo,
                     String trainName,
@@ -62,25 +54,6 @@ public class RailwayDataImportService {
                     String rawRecord) {
     }
 
-    /**
-     * Imports {@code data/train_dataset.csv}. This used to return {@code
-     * void} and swallow any top-level failure with {@code
-     * e.printStackTrace()} - the caller (see {@code
-     * RailwayDataImportController}) had no way to tell a successful import
-     * from a silently failed one; it always returned the same hardcoded
-     * "Import Started" string. This now returns a result the controller can
-     * actually report.
-     *
-     * Parses rows here, then hands each {@code AppConstants.IMPORT_BATCH_SIZE}
-     * chunk to {@link RailwayImportBatchService#importBatch} for persistence
-     * in its own committed transaction - see that class's javadoc for why
-     * the whole import no longer runs as one transaction (this used to be a
-     * single {@code @Transactional} method with a periodic {@code
-     * entityManager.flush()/clear()} to keep Hibernate's persistence context
-     * from holding all ~300k entities as "managed" at once; per-batch
-     * commits now solve both that memory concern and the single-connection/
-     * all-or-nothing-rollback concerns the flush-only approach didn't).
-     */
     public ImportResult importCsv() {
 
         Map<String, Station> stationCache = new HashMap<>();
@@ -139,10 +112,6 @@ public class RailwayDataImportService {
 
                 } catch (Exception ex) {
                     failedCount++;
-                    // WARN with message only, not a full stack trace - same
-                    // reasoning as RailwayImportBatchService's per-row catch:
-                    // an expected, already-counted failure, not worth a full
-                    // trace multiplied across every bad row in a 235k-row CSV.
                     log.warn("Failed to parse row {}: {}", record.toString(), ex.toString());
                     continue;
                 }
@@ -163,8 +132,6 @@ public class RailwayDataImportService {
 
             reader.close();
 
-            // Final partial batch (fewer than IMPORT_BATCH_SIZE rows) that
-            // the loop above never reached the threshold for.
             if (!batch.isEmpty()) {
                 BatchImportResult result = batchService.importBatch(
                                 batch, stationCache, trainCache, processedTrains);
@@ -187,14 +154,6 @@ public class RailwayDataImportService {
 
             log.error("Railway data import failed", e);
 
-            // Even a failed run may have written some rows before hitting the
-            // error (per-row/per-batch failures are caught and skipped
-            // above; this catch is for something failing outside that, e.g.
-            // the CSV resource itself being unreadable). Evict rather than
-            // risk serving stale cached routes for whatever did get
-            // written - each completed batch is already committed by this
-            // point, unlike the old single-transaction version where a
-            // failure here would have rolled everything back.
             evictCachesIfAnyRowsChanged(count);
 
             return new ImportResult(
@@ -210,9 +169,6 @@ public class RailwayDataImportService {
         String trainNo = cleanText(record.get("Train No"));
         String trainName = cleanText(record.get("Train Name"));
 
-        // SEQ drives stop ordering, so unlike Distance a missing/unparseable value is a
-        // hard failure rather than falling back to null. Still tolerant of a trailing
-        // ".0" (e.g. "4.0"), same as Distance, since both come from the same source data.
         Integer sequenceNo = parseInteger(cleanText(record.get("SEQ")));
         if (sequenceNo == null) {
             throw new IllegalArgumentException("Missing or invalid SEQ value in row: " + record);
@@ -231,24 +187,6 @@ public class RailwayDataImportService {
                         arrivalTime, departureTime, distance, record.toString());
     }
 
-    /**
-     * A bulk import can touch an arbitrary, potentially large number of
-     * distinct trains and stations in one run - tracking exactly which
-     * ones changed just to evict them individually isn't worth the extra
-     * bookkeeping for an admin-triggered, infrequent operation. Clearing
-     * every cache outright is simpler and correctness-first; the next
-     * lookup for any train/station/aggregate just repopulates the cache.
-     *
-     * Evicts all 8 named caches (see CacheConfig) - this list previously
-     * only covered the original 4 and predated the 4 Railway Intelligence
-     * caches (NETWORK_CACHE/RANKINGS_CACHE/FUN_STATS_CACHE/
-     * ACHIEVEMENTS_CACHE), which meant a CSV import could leave those
-     * endpoints serving stale data for up to the 15-minute TTL. Fixed per
-     * the backend architecture review's "bulk-import cache eviction is
-     * incomplete" finding - AdminService.clearAllCaches() (the manual
-     * cache-clear endpoint) already evicted all 8, so this brings the
-     * import path in line with it.
-     */
     private void evictCachesIfAnyRowsChanged(int rowsImported) {
 
         if (rowsImported == 0) {
@@ -281,13 +219,6 @@ public class RailwayDataImportService {
             return null;
         }
 
-        // Some source CSVs include seconds (e.g. "18:05:00") — strip that part before
-        // parsing, so we always end up with plain 24-hour H:mm. The pattern only
-        // matches when there are two colon-separated groups after the hour (i.e.
-        // an actual trailing ":ss"), so a plain "8:05" or "18:05" is left alone -
-        // an earlier, looser version of this regex (":\d{2}$") also matched plain
-        // H:mm's own minutes and silently truncated "8:05" down to "8", which
-        // then failed to parse. Handles both single- and double-digit hours.
         String trimmed = value.replaceFirst("^(\\d{1,2}:\\d{2}):\\d{2}$", "$1");
 
         try {
@@ -303,8 +234,6 @@ public class RailwayDataImportService {
             return null;
         }
         try {
-            // Some source CSVs write whole numbers with a trailing decimal (e.g. "245.0").
-            // Parse as a double and round, rather than failing on the decimal point.
             return (int) Math.round(Double.parseDouble(value));
         } catch (NumberFormatException e) {
             log.warn("Invalid integer: {}", value);

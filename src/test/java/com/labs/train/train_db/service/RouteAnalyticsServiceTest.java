@@ -68,14 +68,6 @@ class RouteAnalyticsServiceTest {
                                 .hasMessageContaining("9999");
         }
 
-        /**
-         * Train A: P-Q-R-S-T-U
-         * Train B: M-Q-R-S-N-U
-         *
-         * Longest common contiguous section: Q-R-S. After that, A continues
-         * T-U and B continues N-U - both eventually reach U, so U is the
-         * convergence point even though the routes split at S.
-         */
         @Test
         void findsSharedSegmentDivergenceAndConvergence() {
 
@@ -95,7 +87,6 @@ class RouteAnalyticsServiceTest {
                 assertThat(response.totalStationsA()).isEqualTo(6);
                 assertThat(response.totalStationsB()).isEqualTo(6);
 
-                // shared = {Q,R,S,U} = 4; union = 6+6-4 = 8 -> 50%.
                 assertThat(response.sharedStationCount()).isEqualTo(4);
                 assertThat(response.routeSimilarityPercent()).isCloseTo(50.0, within(0.01));
 
@@ -124,9 +115,6 @@ class RouteAnalyticsServiceTest {
                 assertThat(response.isReverseRoute()).isTrue();
                 assertThat(response.isSameRoute()).isFalse();
 
-                // Every station is shared (100%), but no two are consecutive in
-                // the same order across both routes, so the longest common
-                // contiguous run is a single station.
                 assertThat(response.sharedStationCount()).isEqualTo(3);
                 assertThat(response.routeSimilarityPercent()).isCloseTo(100.0, within(0.01));
                 assertThat(response.longestCommonSegment()).hasSize(1);

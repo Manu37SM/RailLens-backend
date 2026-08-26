@@ -16,29 +16,6 @@ import com.labs.train.train_db.entity.TrainSchedule;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * Every train's stop set, distance, journey duration, and halt count, built
- * once from the shared {@link ScheduleSnapshotService} full-table snapshot -
- * backs SmartSearchService's filtering. A separate bean (rather than a
- * private method on SmartSearchService) specifically so {@link
- * #buildIndex()}'s {@code @Cacheable} actually takes effect: Spring's
- * caching is proxy-based, so a method calling its own {@code @Cacheable}
- * method (self-invocation) bypasses the proxy and silently never caches -
- * the same reason RailwayNetworkService.buildSnapshot() is its own bean
- * rather than a private method other services call internally.
- *
- * Previously called {@code TrainScheduleRepository
- * .findAllByOrderByTrain_IdAscSequenceNoAsc()} directly instead of going
- * through {@code ScheduleSnapshotService} - an independent full ~300k-row
- * load that {@code ScheduleSnapshotService}'s own javadoc describes
- * consolidating for every OTHER "Railway Intelligence" service, but this
- * one was missed. On Render's free tier, that meant a cold-start traffic
- * burst touching both Smart Search and any of Stats/Rankings/FunStats/
- * Achievements/Network could hold two independent ~300k-entity copies of
- * the schedule table in memory at once - a real contributor to the
- * 2026-08-03 java.lang.OutOfMemoryError incident. Now shares the same
- * cached snapshot as everything else.
- */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -52,12 +29,6 @@ class TrainSummaryIndex {
                         int distanceKm, long journeyMinutes, int halts) {
         }
 
-        /**
-         * Cached under SEARCH_INDEX_CACHE (the "small, bounded, whole-table
-         * candidate list" cache already used for the fuzzy-search fallback)
-         * rather than a new cache - this is the same kind of thing, just for
-         * train filtering instead of name matching.
-         */
         @Cacheable(cacheNames = CacheConfig.SEARCH_INDEX_CACHE, key = "'trainSummaries'")
         List<TrainSummary> buildIndex() {
 

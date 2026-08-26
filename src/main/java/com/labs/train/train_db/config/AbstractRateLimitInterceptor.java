@@ -14,22 +14,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * Shared fixed-window, per-client-IP rate limiting logic. Extracted from
- * what used to be a single concrete {@code RateLimitInterceptor} so a
- * second, stricter instance ({@code AuthRateLimitInterceptor}) can reuse the
- * exact same bucketing/sweeping mechanics with a lower threshold, instead of
- * copy-pasting the whole class. See {@code RateLimitInterceptor}'s original
- * javadoc for the documented limitations (in-memory/per-instance,
- * X-Forwarded-For is spoofable without a trusted proxy) - both still apply.
- */
 @Slf4j
 public abstract class AbstractRateLimitInterceptor implements HandlerInterceptor {
 
-        // Swept every N requests so the map doesn't grow unbounded with
-        // one-off/rotating client IPs over the lifetime of a long-running
-        // instance - not a substitute for a proper TTL cache, but avoids the
-        // simplest version of this leaking memory forever.
         private static final long SWEEP_EVERY_N_REQUESTS = 1000L;
 
         private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();

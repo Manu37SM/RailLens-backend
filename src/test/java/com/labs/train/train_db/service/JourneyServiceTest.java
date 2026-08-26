@@ -25,8 +25,6 @@ class JourneyServiceTest {
         @Mock
         private TrainScheduleRepository trainScheduleRepository;
 
-        // Stateless, no dependencies of its own - same rationale as
-        // StatsServiceTest for using the real instance rather than mocking it.
         private final JourneyDayCalculator journeyDayCalculator = new JourneyDayCalculator();
 
         private JourneyService journeyService() {
@@ -91,9 +89,6 @@ class JourneyServiceTest {
                 Station ndls = station("NDLS", "New Delhi");
                 Station hwh = station("HWH", "Howrah Jn");
 
-                // A train that passes HWH before NDLS on its route doesn't
-                // actually go NDLS -> HWH for this passenger, even though both
-                // stops exist on it.
                 Train backwards = train(1L, "1001", "Backwards Express");
                 TrainSchedule sourceStop = schedule(backwards, ndls, 5, LocalTime.of(10, 0), LocalTime.of(10, 5), 500);
                 TrainSchedule destinationStop = schedule(backwards, hwh, 2, LocalTime.of(6, 0), LocalTime.of(6, 5), 100);
@@ -130,12 +125,10 @@ class JourneyServiceTest {
                 Station ndls = station("NDLS", "New Delhi");
                 Station hwh = station("HWH", "Howrah Jn");
 
-                // Fast train: 08:00 -> 16:00, same day = 8h.
                 Train fast = train(1L, "1001", "Fast Express");
                 TrainSchedule fastSource = schedule(fast, ndls, 1, null, LocalTime.of(8, 0), 0);
                 TrainSchedule fastDestination = schedule(fast, hwh, 2, LocalTime.of(16, 0), null, 1400);
 
-                // Slow train: 08:00 -> 23:00, same day = 15h.
                 Train slow = train(2L, "1002", "Slow Passenger");
                 TrainSchedule slowSource = schedule(slow, ndls, 1, null, LocalTime.of(8, 0), 0);
                 TrainSchedule slowDestination = schedule(slow, hwh, 2, LocalTime.of(23, 0), null, 1450);
@@ -156,9 +149,6 @@ class JourneyServiceTest {
                 assertThat(trains.get(0).duration()).isEqualTo("8h 00m");
                 assertThat(trains.get(0).distance()).isEqualTo(1400);
 
-                // Direct (no intermediate stops): all 8h counts as moving, no
-                // halts, and 08:00-16:00 never touches the 21:00-06:00 night
-                // window.
                 assertThat(trains.get(0).numHalts()).isZero();
                 assertThat(trains.get(0).movingMinutes()).isEqualTo(480);
                 assertThat(trains.get(0).haltedMinutes()).isZero();
@@ -181,8 +171,6 @@ class JourneyServiceTest {
                 TrainSchedule knownSource = schedule(known, ndls, 1, null, LocalTime.of(8, 0), 0);
                 TrainSchedule knownDestination = schedule(known, hwh, 2, LocalTime.of(12, 0), null, 400);
 
-                // Missing departure time at the source stop - duration can't be
-                // computed, so this must sort after "known", not crash.
                 Train unknown = train(2L, "1002", "Unknown Duration Passenger");
                 TrainSchedule unknownSource = schedule(unknown, ndls, 1, null, null, 0);
                 TrainSchedule unknownDestination = schedule(unknown, hwh, 2, LocalTime.of(20, 0), null, 400);
@@ -207,8 +195,6 @@ class JourneyServiceTest {
                 Station ndls = station("NDLS", "New Delhi");
                 Station hwh = station("HWH", "Howrah Jn");
 
-                // Departs 23:00 day 1, arrives 05:00 the next day = 6h, not a
-                // negative duration.
                 Train overnight = train(1L, "1001", "Overnight Express");
                 TrainSchedule source = schedule(overnight, ndls, 1, null, LocalTime.of(23, 0), 0);
                 TrainSchedule destination = schedule(overnight, hwh, 2, LocalTime.of(5, 0), null, 1400);
@@ -223,8 +209,6 @@ class JourneyServiceTest {
                 JourneyTrainResponse trip = response.trains().get(0);
                 assertThat(trip.duration()).isEqualTo("6h 00m");
 
-                // The whole 6h leg (23:00-05:00) falls inside the 21:00-06:00
-                // night window.
                 assertThat(trip.movingMinutes()).isEqualTo(360);
                 assertThat(trip.nightTravelPercent()).isEqualTo(100.0);
                 assertThat(trip.dayTravelPercent()).isEqualTo(0.0);
@@ -237,10 +221,6 @@ class JourneyServiceTest {
                 Station gaya = station("GAYA", "Gaya Jn");
                 Station hwh = station("HWH", "Howrah Jn");
 
-                // NDLS (dep 08:00) -> GAYA (arr 12:00 / dep 12:20, 20 min halt) ->
-                // HWH (arr 16:00). Moving: 4h + 3h40m = 460 min. Halted: 20 min.
-                // Total duration 08:00-16:00 = 8h = 480 min = 460 + 20, checks out.
-                // Distance 1400km over 460 moving minutes.
                 Train t = train(1L, "1001", "Intermediate Express");
                 TrainSchedule source = schedule(t, ndls, 1, null, LocalTime.of(8, 0), 0);
                 TrainSchedule mid = schedule(t, gaya, 2, LocalTime.of(12, 0), LocalTime.of(12, 20), 900);

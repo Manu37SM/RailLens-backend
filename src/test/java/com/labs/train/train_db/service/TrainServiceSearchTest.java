@@ -20,11 +20,6 @@ import com.labs.train.train_db.model.TrainSearchResponse;
 import com.labs.train.train_db.repository.TrainRepository;
 import com.labs.train.train_db.repository.TrainScheduleRepository;
 
-/**
- * Covers only the search()/fuzzySearch() path added alongside the
- * fuzzy-search fallback - the rest of TrainService (getTrainDetails etc.)
- * has no dedicated test file yet and is out of scope here.
- */
 @ExtendWith(MockitoExtension.class)
 class TrainServiceSearchTest {
 
@@ -66,8 +61,8 @@ class TrainServiceSearchTest {
                 .thenReturn(Page.empty());
 
         when(trainRepository.findAllSearchKeys()).thenReturn(List.of(
-                new TrainSearchResponse("12301", "Rajdhani Express"), // 1 edit from "rajdani"
-                new TrainSearchResponse("55555", "Local Passenger"))); // far away
+                new TrainSearchResponse("12301", "Rajdhani Express"),
+                new TrainSearchResponse("55555", "Local Passenger")));
 
         List<TrainSearchResponse> result = trainService().search("Rajdani");
 

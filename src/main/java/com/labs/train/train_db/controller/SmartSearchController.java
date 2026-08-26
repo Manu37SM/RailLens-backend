@@ -13,14 +13,6 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 
-/**
- * "Smart Search" (FEATURE.md) - structured, natural-language-ish train
- * queries. See SmartSearchQueryParser for the fixed grammar this
- * understands and SmartSearchResponse for how an unrecognized query is
- * reported (200 with {@code recognized: false}, not a 4xx - an
- * unparseable query is an expected outcome for a free-text field, not a
- * client error).
- */
 @RestController
 @RequestMapping("/api/v1/search")
 @RequiredArgsConstructor

@@ -60,9 +60,6 @@ class RequestIdFilterTest {
 
         @Test
         void generatesAFreshIdInsteadOfTrustingAnInboundValueContainingControlCharacters() throws Exception {
-                // A newline here would let a malicious caller inject a forged
-                // extra log line into every subsequent log statement for this
-                // request - the filter must not pass this through verbatim.
                 when(request.getHeader("X-Request-Id")).thenReturn("legit-looking\nERROR fake log line");
 
                 filter.doFilter(request, response, filterChain);

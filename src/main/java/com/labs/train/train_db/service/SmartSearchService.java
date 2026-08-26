@@ -25,12 +25,6 @@ import com.labs.train.train_db.service.SmartSearchQueryParser.StopsAtBoth;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * "Smart Search" (FEATURE.md) - see SmartSearchQueryParser for the fixed
- * grammar this understands, and SmartSearchResponse for the recognized/
- * unrecognized distinction. Matches are capped (see MAX_RESULTS) - this is
- * a browsing aid, not a bulk-export endpoint.
- */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -73,13 +67,6 @@ public class SmartSearchService {
                 };
         }
 
-        // ------------------------------------------------------------
-
-        /**
-         * Exact station code first (the unambiguous case), falling back to
-         * the same name/code LIKE search the station search box uses - lets
-         * a query say either "NDLS" or "New Delhi" and resolve the same way.
-         */
         private Optional<String> resolveStation(String token) {
 
                 String candidate = token.trim();
@@ -90,10 +77,6 @@ public class SmartSearchService {
 
                 Optional<Station> byCode = stationRepository.findByStationCode(candidate.toUpperCase());
 
-                // Explicit lambdas rather than Station::getStationCode - avoids
-                // the JDT null analyzer's "unchecked conversion for the
-                // receiver" warning on the method-reference form (same pattern
-                // used throughout this codebase); same behavior either way.
                 if (byCode.isPresent()) {
                         return byCode.map((Station station) -> station.getStationCode());
                 }
@@ -142,11 +125,6 @@ public class SmartSearchService {
                         return new SmartSearchResponse(true, "Could not find a station matching \"" + missing + "\"", 0, List.of());
                 }
 
-                // Order-agnostic - unlike JourneyService.search, Smart Search
-                // doesn't know which stop comes first on a given train's route,
-                // it just checks that both are served (see the class javadoc:
-                // this is a filtering aid, not a duplicate of the dedicated
-                // Between Stations journey planner).
                 return filterAndRespond(
                                 index,
                                 s -> s.stationCodes().contains(from.get()) && s.stationCodes().contains(to.get()),

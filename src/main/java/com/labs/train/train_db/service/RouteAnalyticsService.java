@@ -14,15 +14,6 @@ import com.labs.train.train_db.repository.TrainScheduleRepository;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * "Route Analytics" (FEATURE.md) - compares two trains' routes: how much
- * station overlap they share, the longest contiguous section of track both
- * travel, where their paths diverge/reconverge, and whether one is simply
- * the other run in reverse. Computed on demand for a single pair of trains
- * (like TrainIntelligenceService, not batch-precomputed for every possible
- * pair - that's O(trains^2) and nobody looks at more than one comparison at
- * a time).
- */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -80,8 +71,6 @@ public class RouteAnalyticsService {
                                 codesA.equals(codesB));
         }
 
-        // ------------------------------------------------------------
-
         private List<String> stationCodes(List<TrainSchedule> route) {
                 return route.stream()
                                 .map(schedule -> schedule.getStation().getStationCode())
@@ -91,14 +80,6 @@ public class RouteAnalyticsService {
         private record LongestCommonSegment(int endA, int endB, int length) {
         }
 
-        /**
-         * Longest common *substring* (contiguous run), not longest common
-         * subsequence - a route comparison cares about an unbroken shared
-         * section of track, not merely visiting the same stations in the
-         * same relative order with gaps. Classic O(n*m) DP on suffix-match
-         * length; ties keep the first (leftmost in A) occurrence found for
-         * determinism.
-         */
         private LongestCommonSegment longestCommonSegment(List<String> a, List<String> b) {
 
                 int n = a.size();
@@ -129,13 +110,6 @@ public class RouteAnalyticsService {
                 return new LongestCommonSegment(bestEndA, bestEndB, bestLength);
         }
 
-        /**
-         * First station (walking forward from the end of the shared segment
-         * on route A) that also appears somewhere after the shared segment
-         * on route B - i.e. the next place the two trains' paths meet again
-         * after splitting. Not necessarily reached at the same "distance" on
-         * each route, just the same station.
-         */
         private String findConvergencePoint(List<String> codesA, List<String> codesB, LongestCommonSegment segment) {
 
                 Set<String> tailB = new HashSet<>(codesB.subList(segment.endB(), codesB.size()));

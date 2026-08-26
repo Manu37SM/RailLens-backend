@@ -1,0 +1,33 @@
+name: Database backup
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install postgresql-client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Run backup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_DIR: ${{ github.workspace }}/backups
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret is not set - see this workflow's header comment for setup steps." >&2
+            exit 1
+          fi
+          ./scripts/backup-db.sh "$DATABASE_URL"
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: raillens-db-backup-${{ github.run_id }}
+          path: ${{ github.workspace }}/backups/*.sql.gz
+          retention-days: 30
