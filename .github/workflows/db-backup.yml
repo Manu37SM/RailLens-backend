@@ -26,7 +26,7 @@ jobs:
           ./scripts/backup-db.sh "$DATABASE_URL"
 
       - name: Upload backup artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: raillens-db-backup-${{ github.run_id }}
           path: ${{ github.workspace }}/backups/*.sql.gz
