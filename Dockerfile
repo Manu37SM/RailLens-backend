@@ -1,5 +1,5 @@
 
-FROM eclipse-temurin:26-jdk AS build
+FROM eclipse-temurin:27-jdk AS build
 WORKDIR /app
 
 COPY mvnw .
@@ -10,7 +10,7 @@ RUN chmod +x mvnw && ./mvnw -B dependency:go-offline
 COPY src src
 RUN ./mvnw -B -DskipTests package
 
-FROM eclipse-temurin:26-jre AS run
+FROM eclipse-temurin:27-jre AS run
 WORKDIR /app
 
 RUN useradd --system --create-home --shell /usr/sbin/nologin raillens
