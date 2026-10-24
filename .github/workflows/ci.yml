@@ -32,11 +32,17 @@ jobs:
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '26'
+          java-version: '27'
           cache: maven
 
       - name: Run tests
         run: ./mvnw -B test
+        env:
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/traindb
+          SPRING_DATASOURCE_USERNAME: postgres
+          SPRING_DATASOURCE_PASSWORD: postgres
+          RAILLENS_JWT_SECRET: ci-only-secret-ci-only-secret-ci-only-1234
+          RAILLENS_ADMIN_API_KEY: ci-only-admin-key
 
       - name: Build jar (skip tests - already ran above)
         run: ./mvnw -B -DskipTests package
