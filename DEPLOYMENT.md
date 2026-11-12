@@ -1,6 +1,6 @@
 # How to deploy RailLens and RailOps (all repos)
 
-**Last updated:** 12 Nov 2026, after Phase 3A (RailOps staff app restyled to look like RailLens).
+**Last updated:** 12 Nov 2026, after Phase 3B (RailOps reads train timetables from RailLens).
 
 This guide is the same file in every repo: `train-db`, `train-db-frontend`, `train-db-mobile` and `railops`. Open whichever one you have. It is updated after every phase. The newest version is always the one in `train-db`.
 
@@ -37,6 +37,7 @@ Update this table whenever you merge or deploy. (I'll update it at the end of ev
 | Phase 2B: website keeps the refresh token in a secure cookie | `train-db-frontend` | ⏳ branch `security/phase2b-web-cookie` (built on 2A: **merge 2A first**) | ❌ no | backend 2B live first; env var `RAILLENS_PROXY_SECRET` (Section 7) |
 | RailOps (whole system) | `railops` | n/a (no git yet) | ❌ never deployed | follow `railops/deploy/render/README.md` |
 | Phase 3A: RailOps web app restyled like RailLens (colours, Geist font, light/dark theme) | `railops` (`railops-web/`) | n/a (in the zip) | ❌ never deployed | nothing extra: it ships with the normal RailOps web deploy |
+| Phase 3B: RailOps opens trains for booking from RailLens timetables; gateway reads the real visitor IP on Render; gateway allows the RailLens website (CORS) | `railops` | n/a (in the zip) | ❌ never deployed | **RailLens backend live first**; settings `RAILLENS_API_URL` / `RAILLENS_WEB_ORIGIN` in RailOps' `render.env` (pre-filled) |
 
 **Merging the branches:** each 2B branch contains the 2A commits too. Merge `security/phase2a-admin-mfa` first, then `security/phase2b-web-cookie`, in each repo. The mobile app has no 2B changes.
 
@@ -200,6 +201,11 @@ Things to know first:
 - RailOps is separate from RailLens for now. Logging in to one does not log you in to the other until the "single login" phase is done. When it is, this guide will gain a section on the order to deploy both.
 - RailOps uses its **own** Neon project. Don't point it at the RailLens database.
 - Since Phase 3A the RailOps web app looks like RailLens (same colours, font and light/dark switch). There are no new settings to make.
+- **Since Phase 3B, RailOps gets its trains from RailLens.** A new RailOps database has no trains at all. After deploying, an admin opens trains for booking: RailOps web app → **Run operations** → **Open a train for booking** (train number, dates, coaches). Step by step: `railops/docs/runbooks/open-trains-for-booking.md`.
+  - So **deploy the RailLens backend before RailOps**, and keep it reachable. RailOps only needs it when staff open trains, not for bookings.
+  - In RailOps' `deploy/render/render.env`:
+    - `RAILLENS_API_URL` is where RailLens' API is (already filled in with `https://raillens-train-db.onrender.com/api/v1`).
+    - `RAILLENS_WEB_ORIGIN` is the RailLens website, which may call RailOps from the browser (needed for booking in RailLens later). `print-env.sh` turns both into the right service settings.
 - **The `railops` folder has no git history yet.** Before you start merging RailOps changes, make it a repo: `cd railops`, `git init`, `git add .`, `git commit -m "RailOps baseline"`. Check first that `deploy/render/render.env`, `deploy/render/out/` and `deploy/secrets/` are listed in `.gitignore` (they are), so secrets never get committed.
 
 ---
@@ -264,3 +270,4 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 | 12 Nov 2026 | First version: covers Phases 0, 1 and 2A, holding merges back from going live, the database check, and the Phase 2A admin setup. |
 | 12 Nov 2026 | Phase 2B: two matching proxy secrets (Render + Vercel), merge order 2A → 2B, cookie checks in the smoke test, three new troubleshooting rows. |
 | 12 Nov 2026 | Phase 3A: RailOps web restyle in the tracker (no new settings); note to put `railops` under git before merging. |
+| 12 Nov 2026 | Phase 3B: RailOps needs the RailLens backend live first; how to open trains for booking; two new RailOps settings. |
