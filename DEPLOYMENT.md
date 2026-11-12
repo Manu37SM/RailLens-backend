@@ -1,6 +1,6 @@
 # How to deploy RailLens and RailOps (all repos)
 
-**Last updated:** 13 Nov 2026, after Phase 4B (RailLens backend can accept RailOps logins).
+**Last updated:** 13 Nov 2026, after Phase 4C (moving RailLens accounts into the RailOps login).
 
 This guide is the same file in every repo: `train-db`, `train-db-frontend`, `train-db-mobile` and `railops`. Open whichever one you have. It is updated after every phase. The newest version is always the one in `train-db`.
 
@@ -40,8 +40,9 @@ Update this table whenever you merge or deploy. (I'll update it at the end of ev
 | Phase 3B: RailOps opens trains for booking from RailLens timetables; gateway reads the real visitor IP on Render; gateway allows the RailLens website (CORS) | `railops` | n/a (in the zip) | ❌ never deployed | **RailLens backend live first**; settings `RAILLENS_API_URL` / `RAILLENS_WEB_ORIGIN` in RailOps' `render.env` (pre-filled) |
 | Phase 4A: RailOps login gets "app sessions" (for the RailLens Android app and website server) and puts the email in its tokens | `railops` (identity service, gateway) | n/a (in the zip) | ❌ never deployed | nothing extra: no new settings; nothing uses it yet |
 | Phase 4B: RailLens backend can also accept RailOps logins (DB migration **V8**) | `train-db` | ⏳ branch `security/phase4b-railops-tokens` (built on 2B: **merge 2A, then 2B, then 4B**) | ❌ no | nothing until RailOps is live. Then two optional settings (Section 6.1). V8 runs by itself and is safe to roll back. |
+| Phase 4C: move RailLens accounts into the RailOps login (same email and password) | `train-db` (export) + `railops` (identity: DB migration **V4**, staff-app button) | ⏳ `train-db` branch `security/phase4c-account-move` (built on 4B); railops in the zip | ❌ no | RailOps live; RailLens has the two 4B settings. Then run it once: `railops/docs/runbooks/move-raillens-accounts.md` |
 
-**Merging the branches:** each branch contains the ones before it. In `train-db`, merge in this order: `security/phase2a-admin-mfa` → `security/phase2b-web-cookie` → `security/phase4b-railops-tokens`. In `train-db-frontend`: 2A → 2B. The mobile app has only 2A.
+**Merging the branches:** each branch contains the ones before it. In `train-db`, merge in this order: `security/phase2a-admin-mfa` → `security/phase2b-web-cookie` → `security/phase4b-railops-tokens` → `security/phase4c-account-move`. In `train-db-frontend`: 2A → 2B. The mobile app has only 2A.
 
 **How to see what's live right now**
 - **Backend:** Render → `raillens-train-db` → **Events**. The newest "Deploy live" line shows the commit. Compare it with `git log` in `train-db`.
@@ -216,7 +217,12 @@ Things to know first:
 
 ## 9b. Coming next: one login for both apps
 
-RailLens is moving to RailOps' login, so one account books tickets and uses RailLens. The plan, step by step, is in `railops/docs/single-login-plan.md`. Steps 4A to 4C change nothing users can see. **Step 4D is the one switch-over**: everyone starts signing in through RailOps, and people keep their passwords. When 4D is ready, this guide will get an exact order and a rollback for it. Until then there is nothing to do.
+RailLens is moving to RailOps' login, so one account books tickets and uses RailLens. The plan, step by step, is in `railops/docs/single-login-plan.md`. Steps 4A to 4C change nothing users can see.
+
+**When both apps are live, in this order:**
+1. Set RailLens' two RailOps settings (Section 6.1: `RAILLENS_RAILOPS_JWKS_URL`, `RAILLENS_RAILOPS_ISSUER`) and redeploy RailLens' backend.
+2. Sign in to the RailOps staff app as the nationwide admin (with your authenticator code) → **Run operations** → **Move RailLens accounts**. Details and what the result lines mean: `railops/docs/runbooks/move-raillens-accounts.md`.
+3. Give staff roles in RailOps to any RailLens admins it lists (they're moved as passengers on purpose). **Step 4D is the one switch-over**: everyone starts signing in through RailOps, and people keep their passwords. When 4D is ready, this guide will get an exact order and a rollback for it. Until then there is nothing to do.
 
 ## 10. Smoke test after every deploy (5 minutes)
 
@@ -281,3 +287,4 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 | 12 Nov 2026 | Phase 3B: RailOps needs the RailLens backend live first; how to open trains for booking; two new RailOps settings. |
 | 13 Nov 2026 | Phase 4A in the tracker; new section 9b announcing the single-login plan and its one breaking step (4D). |
 | 13 Nov 2026 | Phase 4B: new branch and merge order, migration V8, two optional backend settings (leave unset until RailOps is live). |
+| 13 Nov 2026 | Phase 4C: account move (tracker, merge order, the three-step order in 9b). |
