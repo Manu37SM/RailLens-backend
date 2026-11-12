@@ -1,6 +1,6 @@
 # How to deploy RailLens and RailOps (all repos)
 
-**Last updated:** 13 Nov 2026, after Phase 4D for the backend and website (the switch to one login, behind a setting that stays off until you flip it). The Android app's part of 4D comes next.
+**Last updated:** 13 Nov 2026, after Phase 4D (the switch to one login for the backend, website and Android app, behind settings that stay off until you flip them).
 
 This guide is the same file in every repo: `train-db`, `train-db-frontend`, `train-db-mobile` and `railops`. Open whichever one you have. It is updated after every phase. The newest version is always the one in `train-db`.
 
@@ -44,8 +44,9 @@ Update this table whenever you merge or deploy. (I'll update it at the end of ev
 | Phase 4D: RailOps login gets "change my password" and "close my account"; gateway accepts the visitor IP from the RailLens website server | `railops` (identity, gateway) | n/a (in the zip) | ❌ never deployed | new gateway setting `RAILOPS_EDGE_PROXY_SECRET` (printed by `print-env.sh` after re-running `gen-secrets.sh`) |
 | Phase 4D: RailLens backend forwards password change / account closing for linked accounts to RailOps | `train-db` | ⏳ branch `security/phase4d-login-switch` (built on 4C) | ❌ no | RailOps 4D live. Optional setting `RAILLENS_RAILOPS_API_URL` (Section 6.1). No migration. |
 | Phase 4D: website can sign in through RailOps (**off until you set `NEXT_PUBLIC_RAILLENS_LOGIN_PROVIDER=railops`**) | `train-db-frontend` | ⏳ branch `security/phase4d-login-switch` (built on 2B) | ❌ no | merge and deploy any time (changes nothing while the setting is unset). Flip the setting only by the order in Section 9b. |
+| Phase 4D: Android app can sign in through RailOps (**off until you set `LOGIN_PROVIDER = 'railops'` in `src/config/login.ts` and build a new APK**) | `train-db-mobile` | ⏳ branch `security/phase4d-login-switch` (built on 2A: **merge 2A first**) | ❌ no | an APK built with the setting unchanged behaves exactly as before. Switch it only by Section 9b. |
 
-**Merging the branches:** each branch contains the ones before it. In `train-db`, merge in this order: `security/phase2a-admin-mfa` → `security/phase2b-web-cookie` → `security/phase4b-railops-tokens` → `security/phase4c-account-move` → `security/phase4d-login-switch`. In `train-db-frontend`: 2A → 2B → `security/phase4d-login-switch`. The mobile app has only 2A so far.
+**Merging the branches:** each branch contains the ones before it. In `train-db`, merge in this order: `security/phase2a-admin-mfa` → `security/phase2b-web-cookie` → `security/phase4b-railops-tokens` → `security/phase4c-account-move` → `security/phase4d-login-switch`. In `train-db-frontend`: 2A → 2B → `security/phase4d-login-switch`. In `train-db-mobile`: 2A → `security/phase4d-login-switch`.
 
 **How to see what's live right now**
 - **Backend:** Render → `raillens-train-db` → **Events**. The newest "Deploy live" line shows the commit. Compare it with `git log` in `train-db`.
@@ -194,6 +195,7 @@ Only after the backend is live (Section 6).
 Only after the backend is live. "Deploying" the app means building a new APK and sharing it.
 
 1. Check `src/config/env.ts`: `LIVE_BASE_URL` must be `https://raillens-train-db.onrender.com/api/v1`, and `USE_LOCAL_BACKEND` must be `false`.
+   Check `src/config/login.ts` (Phase 4D): `LOGIN_PROVIDER` is `'raillens'` until you do the app switch in Section 9b. `RAILOPS_BASE_URL` must be your RailOps gateway address (pre-filled `https://railops-gateway.onrender.com`).
 2. In `android/app/build.gradle`, raise `versionCode` by 1 (for example `1` → `2`) and set `versionName` (for example `"1.1"`). Phones refuse an "update" with the same `versionCode`.
 3. Make sure `android/keystore.properties` and your `release.keystore` exist on this computer. They are not in git, so keep backups. Without them the APK is signed with the public debug key, and antivirus apps flag it.
 4. Build it in PowerShell:
@@ -249,10 +251,18 @@ RailLens is moving to RailOps' login, so one account books tickets and uses Rail
 
 **What changes for people:** sign in with email; new accounts need a phone number and a 10+ character password; admins type their authenticator code on the same screen; setting up a new authenticator is done in the RailOps staff app.
 
-**The Android app** still uses RailLens' own login until its part of 4D (next). Moved accounts keep working there with their old password. People who **sign up on the website after the switch** can't sign in to the app until then.
+### The Android app's switch (after the website's, once it has worked for a day or so)
+1. In `train-db-mobile`, merge `security/phase4d-login-switch` (after 2A).
+2. In `src/config/login.ts`, set `LOGIN_PROVIDER = 'railops'` and check `RAILOPS_BASE_URL` is the gateway address.
+3. Build and share a new APK (Section 8, including raising `versionCode`).
+4. On your phone, after installing it: you're signed out once (expected). Sign in with email + password; register a throwaway account (phone number, 10+ character password); close and reopen the app: still signed in; an admin signs in with "Staff? Add your one-time code".
+
+Until people install the new APK, the old app keeps using RailLens' own login. Moved accounts still work there with their old password. People who **signed up on the website after the switch** (or changed their password there) can't sign in to the old app; they need the new APK.
 
 ### Rollback (undo the switch)
 Vercel → remove `NEXT_PUBLIC_RAILLENS_LOGIN_PROVIDER` (or set it to `raillens`) → **redeploy**. Or **Instant Rollback** to the deployment before the flip. Leave RailOps and the RailLens backend as they are.
+
+**App:** set `LOGIN_PROVIDER = 'raillens'` again and share a new APK (raise `versionCode` again; phones won't install an older one). Or tell people to keep the previous APK if they haven't updated.
 
 After a rollback everyone signs in once more with the RailLens login. **Who can't:** people who registered after the switch, or changed their password after it (their password now lives only in RailOps). Tell them to wait, fix what made you roll back, and flip it on again. Their accounts are fine.
 
@@ -310,6 +320,7 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 | (4D) After the switch: everyone gets "Too many attempts" | `RAILOPS_PROXY_SECRET` (Vercel) and `RAILOPS_EDGE_PROXY_SECRET` (RailOps gateway) differ, or one is missing. Make them identical and redeploy both. |
 | (4D) "This email already has a RailLens account that isn't linked" | That account wasn't moved. Run the account move again (Section 9b, step 3), then the person signs in again. |
 | (4D) Admin can't sign in | They need the one-time code ("Staff? Add your one-time code"). If they never set up an authenticator in RailOps, they do that in the RailOps staff app first. |
+| (4D) App: "Unable to reach the server" on sign-in, website works | `RAILOPS_BASE_URL` in `src/config/login.ts` is wrong, or the RailOps gateway is asleep (wait a minute and try again). |
 | (4D) Anything else after the switch | Roll back (Section 9b → Rollback), then send me the Vercel log lines for `/api/auth/login`. |
 | App update won't install | `versionCode` wasn't raised, or it was signed with a different key than last time. |
 
@@ -326,4 +337,5 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 | 13 Nov 2026 | Phase 4A in the tracker; new section 9b announcing the single-login plan and its one breaking step (4D). |
 | 13 Nov 2026 | Phase 4B: new branch and merge order, migration V8, two optional backend settings (leave unset until RailOps is live). |
 | 13 Nov 2026 | Phase 4C: account move (tracker, merge order, the three-step order in 9b). |
+| 13 Nov 2026 | Phase 4D (Android app): tracker row, merge order, the app's switch steps and rollback in 9b, a check in Section 8, one troubleshooting row. |
 | 13 Nov 2026 | Phase 4D (backend + website): the switch-over order, checks and rollback in 9b; new website settings (Section 7); optional backend setting; RailOps gateway secret; five troubleshooting rows. |
