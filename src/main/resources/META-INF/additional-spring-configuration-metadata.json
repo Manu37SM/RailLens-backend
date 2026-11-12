@@ -81,6 +81,12 @@
       "type": "java.lang.Long",
       "defaultValue": 12,
       "description": "Absolute lifetime of an MFA (admin) session from sign-in; refreshing does not extend it."
+    },
+    {
+      "name": "raillens.client-ip.proxy-secret",
+      "type": "java.lang.String",
+      "defaultValue": "",
+      "description": "Shared secret (32+ characters) that lets the RailLens website's own server pass the visitor's IP in X-RailLens-Client-IP (it signs people in on their behalf, Phase 2B). Must equal RAILLENS_PROXY_SECRET on Vercel. Blank: the header is ignored."
     }
   ]
 }

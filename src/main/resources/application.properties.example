@@ -78,6 +78,12 @@ raillens.admin.legacy-key-enabled=true
 # reject every request from it.
 raillens.cors.allowed-origins=http://localhost:3000
 
+# Lets the website's own server (its sign-in proxy) pass the visitor's IP in
+# X-RailLens-Client-IP, so rate limits stay per visitor. Must be the same
+# value as RAILLENS_PROXY_SECRET in the website. 32+ characters
+# (`openssl rand -base64 32`). Leave blank to ignore that header.
+raillens.client-ip.proxy-secret=
+
 # HMAC signing secret for login/register JWTs (see JwtService). Required -
 # the app refuses to start without one, and refuses to start if it's under
 # 32 bytes (too weak for HS256). Generate one with, e.g.:
