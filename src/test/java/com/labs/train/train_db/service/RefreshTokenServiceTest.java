@@ -26,6 +26,8 @@ import com.labs.train.train_db.repository.RefreshTokenRepository;
 @ExtendWith(MockitoExtension.class)
 class RefreshTokenServiceTest {
 
+        private static final java.util.UUID FAMILY = java.util.UUID.fromString("00000000-0000-0000-0000-00000000f00d");
+
         @Mock
         private RefreshTokenRepository refreshTokenRepository;
 
@@ -35,6 +37,7 @@ class RefreshTokenServiceTest {
         void setUp() {
                 refreshTokenService = new RefreshTokenService(refreshTokenRepository);
                 ReflectionTestUtils.setField(refreshTokenService, "refreshExpirationDays", 30L);
+                ReflectionTestUtils.setField(refreshTokenService, "reuseGraceSeconds", 10L);
         }
 
         private static User user(long id) {
@@ -81,23 +84,26 @@ class RefreshTokenServiceTest {
         void rotateRevokesTheOldTokenAndIssuesANewOneForTheSameUser() {
 
                 User user = user(1L);
-                RefreshToken existing = new RefreshToken(user, "irrelevant-hash", LocalDateTime.now().plusDays(1));
+                RefreshToken existing = new RefreshToken(user, "irrelevant-hash", LocalDateTime.now().plusDays(1), FAMILY);
 
-                when(refreshTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(existing));
+                when(refreshTokenRepository.findByTokenHashForUpdate(any())).thenReturn(Optional.of(existing));
 
                 RefreshTokenService.RotatedToken rotated = refreshTokenService.rotate("raw-token-value");
 
                 assertThat(rotated.user()).isEqualTo(user);
                 assertThat(rotated.rawToken()).isNotBlank();
                 assertThat(existing.isRevoked()).isTrue();
+                assertThat(existing.getRotatedAt()).as("marked as rotated, for reuse detection").isNotNull();
 
-                verify(refreshTokenRepository, org.mockito.Mockito.times(2)).save(any());
+                ArgumentCaptor<RefreshToken> saved = ArgumentCaptor.forClass(RefreshToken.class);
+                verify(refreshTokenRepository, org.mockito.Mockito.times(2)).save(saved.capture());
+                assertThat(saved.getAllValues().get(1).getFamilyId()).as("successor stays in the family").isEqualTo(FAMILY);
         }
 
         @Test
         void rotateRejectsAnUnknownToken() {
 
-                when(refreshTokenRepository.findByTokenHash(any())).thenReturn(Optional.empty());
+                when(refreshTokenRepository.findByTokenHashForUpdate(any())).thenReturn(Optional.empty());
 
                 assertThatThrownBy(() -> refreshTokenService.rotate("unknown-token"))
                                 .isInstanceOf(InvalidCredentialsException.class);
@@ -107,9 +113,9 @@ class RefreshTokenServiceTest {
         void rotateRejectsAnExpiredToken() {
 
                 User user = user(1L);
-                RefreshToken expired = new RefreshToken(user, "hash", LocalDateTime.now().minusDays(1));
+                RefreshToken expired = new RefreshToken(user, "hash", LocalDateTime.now().minusDays(1), FAMILY);
 
-                when(refreshTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(expired));
+                when(refreshTokenRepository.findByTokenHashForUpdate(any())).thenReturn(Optional.of(expired));
 
                 assertThatThrownBy(() -> refreshTokenService.rotate("expired-token"))
                                 .isInstanceOf(InvalidCredentialsException.class);
@@ -119,27 +125,53 @@ class RefreshTokenServiceTest {
         void rotateRejectsAnAlreadyRevokedToken() {
 
                 User user = user(1L);
-                RefreshToken revoked = new RefreshToken(user, "hash", LocalDateTime.now().plusDays(1));
+                RefreshToken revoked = new RefreshToken(user, "hash", LocalDateTime.now().plusDays(1), FAMILY);
                 revoked.setRevoked(true);
 
-                when(refreshTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(revoked));
+                when(refreshTokenRepository.findByTokenHashForUpdate(any())).thenReturn(Optional.of(revoked));
 
                 assertThatThrownBy(() -> refreshTokenService.rotate("revoked-token"))
                                 .isInstanceOf(InvalidCredentialsException.class);
+                verify(refreshTokenRepository, never()).revokeFamily(any());   // logged out, not rotated: no alarm
         }
 
         @Test
-        void revokeMarksAKnownTokenAsRevoked() {
+        void replayingARotatedTokenAfterTheGraceWindowRevokesTheWholeFamily() {
+
+                RefreshToken stolen = new RefreshToken(user(1L), "hash", LocalDateTime.now().plusDays(1), FAMILY);
+                stolen.setRevoked(true);
+                stolen.setRotatedAt(LocalDateTime.now().minusMinutes(5));
+                when(refreshTokenRepository.findByTokenHashForUpdate(any())).thenReturn(Optional.of(stolen));
+
+                assertThatThrownBy(() -> refreshTokenService.rotate("stolen-copy"))
+                                .isInstanceOf(InvalidCredentialsException.class);
+                verify(refreshTokenRepository).revokeFamily(FAMILY);
+        }
+
+        @Test
+        void twoTabsRefreshingTogetherIsARaceNotATheft() {
+
+                RefreshToken justRotated = new RefreshToken(user(1L), "hash", LocalDateTime.now().plusDays(1), FAMILY);
+                justRotated.setRevoked(true);
+                justRotated.setRotatedAt(LocalDateTime.now().minusSeconds(2));
+                when(refreshTokenRepository.findByTokenHashForUpdate(any())).thenReturn(Optional.of(justRotated));
+
+                assertThatThrownBy(() -> refreshTokenService.rotate("same-token-second-tab"))
+                                .isInstanceOf(InvalidCredentialsException.class);
+                verify(refreshTokenRepository, never()).revokeFamily(any());
+        }
+
+        @Test
+        void logoutRevokesTheWholeSessionFamily() {
 
                 User user = user(1L);
-                RefreshToken existing = new RefreshToken(user, "hash", LocalDateTime.now().plusDays(1));
+                RefreshToken existing = new RefreshToken(user, "hash", LocalDateTime.now().plusDays(1), FAMILY);
 
                 when(refreshTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(existing));
 
                 refreshTokenService.revoke("raw-token-value");
 
-                assertThat(existing.isRevoked()).isTrue();
-                verify(refreshTokenRepository).save(existing);
+                verify(refreshTokenRepository).revokeFamily(FAMILY);
         }
 
         @Test
@@ -149,7 +181,7 @@ class RefreshTokenServiceTest {
 
                 refreshTokenService.revoke("unknown-token");
 
-                verify(refreshTokenRepository, never()).save(any());
+                verify(refreshTokenRepository, never()).revokeFamily(any());
         }
 
         @Test
@@ -173,13 +205,13 @@ class RefreshTokenServiceTest {
         }
 
         @Test
-        void purgeRevokedOrExpiredDelegatesToTheRepositoryAndReturnsTheDeletedCount() {
+        void purgeDelegatesToTheRepositoryAndReturnsTheDeletedCount() {
 
-                when(refreshTokenRepository.deleteRevokedOrExpired(any())).thenReturn(7);
+                when(refreshTokenRepository.deleteExpiredOrLoggedOut(any())).thenReturn(7);
 
-                int deleted = refreshTokenService.purgeRevokedOrExpired();
+                int deleted = refreshTokenService.purgeExpiredAndLoggedOut();
 
                 assertThat(deleted).isEqualTo(7);
-                verify(refreshTokenRepository).deleteRevokedOrExpired(any());
+                verify(refreshTokenRepository).deleteExpiredOrLoggedOut(any());
         }
 }

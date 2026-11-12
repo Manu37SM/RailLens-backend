@@ -81,9 +81,12 @@
 		</dependency>
 
 
+		<!-- Full Spring Security filter chain (was crypto-only). Path-pattern interceptors were allow-by-default:
+		     an endpoint was public unless someone remembered its path, which left catalogue writes open.
+		     The filter chain ends in denyAll(). Includes spring-security-crypto (BCrypt). -->
 		<dependency>
-			<groupId>org.springframework.security</groupId>
-			<artifactId>spring-security-crypto</artifactId>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
 		</dependency>
 
 

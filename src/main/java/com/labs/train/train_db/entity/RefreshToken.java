@@ -1,6 +1,7 @@
 package com.labs.train.train_db.entity;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -45,10 +46,18 @@ public class RefreshToken {
         @Column(nullable = false)
         private LocalDateTime createdAt = LocalDateTime.now();
 
-        public RefreshToken(User user, String tokenHash, LocalDateTime expiresAt) {
+        /** All tokens descended from one login share a family (V6). */
+        @Column(nullable = false)
+        private UUID familyId;
+
+        /** Set when this token was exchanged for its successor; null if revoked by logout or still live. */
+        private LocalDateTime rotatedAt;
+
+        public RefreshToken(User user, String tokenHash, LocalDateTime expiresAt, UUID familyId) {
                 this.user = user;
                 this.tokenHash = tokenHash;
                 this.expiresAt = expiresAt;
+                this.familyId = familyId;
         }
 
         public boolean isValid() {

@@ -10,7 +10,7 @@ RailLens Backend is a Spring Boot REST API that powers the RailLens railway info
 * PostgreSQL
 * Maven
 * Caffeine (in-process caching, via `spring-boot-starter-cache` + `com.github.ben-manes.caffeine`)
-* Hand-rolled JWT authentication (`io.jsonwebtoken` / jjwt 0.13.0) with `spring-security-crypto` used only for BCrypt password hashing — **not** the full Spring Security filter chain (see "Authentication" below for why)
+* JWT authentication (`io.jsonwebtoken` / jjwt 0.13.0) on the Spring Security filter chain, deny-by-default; BCrypt passwords; refresh-token families with reuse detection (see "Authentication" below)
 * springdoc-openapi (Swagger UI / OpenAPI spec generation)
 * opencsv / commons-csv (CSV import)
 * Lombok
@@ -182,14 +182,24 @@ All under `/api/v1/admin/**`, requiring the `X-Admin-Key` header.
 
 ## Authentication
 
-RailLens uses a hand-rolled JWT scheme rather than Spring Security's filter-chain framework — a deliberate choice (see `pom.xml`'s dependency comments) to avoid two competing security paradigms alongside the project's existing interceptor pattern (`AdminApiKeyInterceptor`, `RateLimitInterceptor`). `spring-security-crypto` is used standalone, only for its industry-reviewed BCrypt implementation.
+RailLens uses the **Spring Security filter chain** (`config/SecurityConfig`) with **deny-by-default** authorization: every allowed route is listed explicitly and anything else is refused by `anyRequest().denyAll()`. Until Phase 1 (2026-11) auth was done with per-path MVC interceptors, which are allow-by-default: an endpoint was public unless someone remembered to add its path. That is how `POST /api/v1/trains`, `/stations` and `/schedules` ended up writable by anyone (fixed in Phase 0). Tokens and endpoints are unchanged for clients.
 
-- **Access tokens** are short-lived bearer JWTs (default 60 minutes, `raillens.jwt.expiration-minutes`), issued on register/login and validated per-request by `JwtAuthInterceptor` against `/api/v1/auth/**` (except register/login/refresh/logout, which don't require one).
-- **Refresh tokens** are longer-lived (default 30 days, `raillens.jwt.refresh-expiration-days`), stored server-side via `RefreshTokenService`/`RefreshTokenRepository`, and single-use: exchanging one at `POST /api/v1/auth/refresh` revokes it and issues a new one.
-- **Admin routes** (`/api/v1/admin/**`) use a separate mechanism — a static shared secret in the `X-Admin-Key` header (`AdminApiKeyInterceptor`), not a user JWT.
-- **Rate limiting** — `RateLimitInterceptor` applies to all of `/api/**` (so admin routes can't be hammered around it), with a stricter `AuthRateLimitInterceptor` layered specifically on `/api/v1/auth/**` to slow down credential-stuffing/registration abuse. Buckets are keyed by the real client IP from `ClientIpResolver`: forwarding headers are believed only from trusted proxies, `X-Forwarded-For` is walked right to left (Render appends to it, so its leftmost entry is client-controlled), and on Render the Cloudflare-set `True-Client-IP` is used.
-- **Deny-by-default check** — auth is applied per path, so a new endpoint would be public by default. `EndpointAuthorizationTest` enumerates every registered write endpoint and fails the build if any accepts an anonymous caller (other than register/login/refresh/logout).
-- Trains/stations/schedules write endpoints (`POST /api/v1/trains`, etc.) remain unauthenticated pending a separate decision — this is a known, deliberate gap, not an oversight.
+| Route | Who |
+|---|---|
+| `GET` trains, stations, journeys, network, search, stats; `/actuator/health`, `/actuator/info`; Swagger | everyone |
+| `POST /api/v1/auth/register`, `login`, `refresh`, `logout` | everyone |
+| other `/api/v1/auth/**` (`me`, `password`) | `Authorization: Bearer <access token>` |
+| `/api/v1/admin/**`, and writes to trains/stations/schedules | `X-Admin-Key` |
+| anything else | nobody (401) |
+
+- **Access tokens** are short-lived bearer JWTs (default 60 minutes, `raillens.jwt.expiration-minutes`), checked by `JwtAuthenticationFilter`. A bad token on a public read is ignored, as before.
+- **Refresh tokens** (default 30 days, `raillens.jwt.refresh-expiration-days`) are stored hashed and are single-use. Each login starts a **token family**; `POST /api/v1/auth/refresh` locks the row, rotates it, and issues the successor in the same family. **Reuse detection:** presenting an already-rotated token (outside a 10 s grace window for two tabs refreshing at once, `raillens.auth.refresh-reuse-grace-seconds`) means a copy was stolen, so the whole family is revoked and the user must log in again. Logout revokes the family. Rotated tokens are kept until they expire as evidence for this check (the cleanup job deletes only expired and logged-out tokens).
+- **Admin** is a shared secret in `X-Admin-Key` (`AdminKeyAuthenticationFilter`, constant-time compare). A wrong key is rejected with 401 even on public routes. To be replaced by per-person admin accounts with MFA (Phase 2).
+- **Errors** keep the `{timestamp,status,error}` shape and messages the web and mobile apps display (`JsonAuthErrorHandler`).
+- **CORS** is configured by the `UrlBasedCorsConfigurationSource` bean in `SecurityConfig` (Spring Security only applies CORS when that bean exists).
+- **Security headers** come only from `SecurityHeadersFilter`; Spring Security's header defaults are disabled so public reads don't get `Cache-Control: no-cache`.
+- **Rate limiting** — `RateLimitInterceptor` applies to all of `/api/**`, with a stricter `AuthRateLimitInterceptor` on `/api/v1/auth/**`. Buckets are keyed by the real client IP from `ClientIpResolver`: forwarding headers are believed only from trusted proxies, `X-Forwarded-For` is walked right to left (Render appends to it, so its leftmost entry is client-controlled), and on Render the Cloudflare-set `True-Client-IP` is used.
+- **Tests that hold the line:** `EndpointAuthorizationTest` enumerates every registered write endpoint and fails the build if any accepts an anonymous caller; `SecurityChainTest` covers credentials, error messages, CORS and headers; `RefreshTokenFamilyTest` covers reuse detection, the row lock and cleanup on real PostgreSQL.
 
 ## Caching Strategy
 
