@@ -31,11 +31,12 @@ public class SecurityHeadersFilter extends OncePerRequestFilter {
                                 "Permissions-Policy",
                                 "geolocation=(), camera=(), microphone=()");
 
-                if (request.isSecure()) {
-                        response.setHeader(
-                                        "Strict-Transport-Security",
-                                        "max-age=31536000; includeSubDomains");
-                }
+                // Always sent. Behind Render's TLS-terminating proxy request.isSecure() is false (the app sees plain
+                // HTTP), so the old "only if secure" check meant HSTS was never sent in production. Browsers ignore
+                // this header on plain-HTTP responses (RFC 6797 section 8.1), so sending it locally is harmless.
+                response.setHeader(
+                                "Strict-Transport-Security",
+                                "max-age=31536000; includeSubDomains");
 
                 filterChain.doFilter(request, response);
         }

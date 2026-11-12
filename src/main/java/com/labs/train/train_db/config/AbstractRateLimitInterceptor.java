@@ -20,7 +20,12 @@ public abstract class AbstractRateLimitInterceptor implements HandlerInterceptor
         private static final long SWEEP_EVERY_N_REQUESTS = 1000L;
 
         private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
+        private final ClientIpResolver clientIpResolver;
         private final AtomicLong requestCounter = new AtomicLong();
+
+        protected AbstractRateLimitInterceptor(ClientIpResolver clientIpResolver) {
+                this.clientIpResolver = clientIpResolver;
+        }
 
         protected abstract int getMaxRequestsPerWindow();
 
@@ -32,7 +37,7 @@ public abstract class AbstractRateLimitInterceptor implements HandlerInterceptor
                         HttpServletResponse response,
                         Object handler) throws Exception {
 
-                String clientKey = resolveClientKey(request);
+                String clientKey = clientIpResolver.resolve(request);
                 long now = System.currentTimeMillis();
                 long windowMillis = getWindowMillis();
 
@@ -59,17 +64,6 @@ public abstract class AbstractRateLimitInterceptor implements HandlerInterceptor
                 }
 
                 return true;
-        }
-
-        private String resolveClientKey(HttpServletRequest request) {
-
-                String forwardedFor = request.getHeader("X-Forwarded-For");
-
-                if (forwardedFor != null && !forwardedFor.isBlank()) {
-                        return forwardedFor.split(",")[0].trim();
-                }
-
-                return request.getRemoteAddr();
         }
 
         private void sweepStaleBuckets(long now, long windowMillis) {

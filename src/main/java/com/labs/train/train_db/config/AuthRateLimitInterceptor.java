@@ -8,6 +8,10 @@ public class AuthRateLimitInterceptor extends AbstractRateLimitInterceptor {
         private static final int MAX_REQUESTS_PER_WINDOW = 10;
         private static final long WINDOW_MILLIS = 60_000L;
 
+        public AuthRateLimitInterceptor(ClientIpResolver clientIpResolver) {
+                super(clientIpResolver);
+        }
+
         @Override
         protected int getMaxRequestsPerWindow() {
                 return MAX_REQUESTS_PER_WINDOW;

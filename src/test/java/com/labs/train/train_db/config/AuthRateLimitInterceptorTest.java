@@ -28,7 +28,8 @@ class AuthRateLimitInterceptorTest {
 
         @BeforeEach
         void setUp() throws Exception {
-                interceptor = new AuthRateLimitInterceptor();
+                interceptor = new AuthRateLimitInterceptor(
+                                new ClientIpResolver(ClientIpResolver.DEFAULT_TRUSTED_PROXIES, ""));
                 lenient().when(request.getRemoteAddr()).thenReturn("10.0.0.1");
                 lenient().when(request.getHeader("X-Forwarded-For")).thenReturn(null);
                 lenient().when(response.getWriter()).thenReturn(new PrintWriter(new StringWriter()));

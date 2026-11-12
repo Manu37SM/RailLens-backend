@@ -109,3 +109,11 @@ management.endpoint.health.probes.enabled=true
 # Empty brackets ("[]") show up on lines logged before/outside the filter
 # (startup, scheduled jobs, etc.) - that's expected, not a bug.
 logging.pattern.console=%d{yyyy-MM-dd HH:mm:ss} %-5level [%X{requestId}] %logger{36} - %msg%n
+
+# --- Client IP for rate limiting (see config/ClientIpResolver.java) ---
+# Forwarding headers are only believed when the TCP peer is one of these proxies (CIDR list).
+# Default: loopback + private ranges, which covers Render's internal proxy and local reverse proxies.
+# raillens.client-ip.trusted-proxies=127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128,fc00::/7
+# Single-value header set by a CDN in front of the proxy. On Render: True-Client-IP (set in render.yaml).
+# Leave empty locally: X-Forwarded-For is then walked right to left, skipping trusted proxies.
+raillens.client-ip.trusted-header=

@@ -28,6 +28,17 @@
       "type": "java.lang.String[]",
       "description": "Comma-separated list of origins allowed to make cross-origin requests to /api/** (see WebConfig). Defaults to the local frontend dev origin only.",
       "defaultValue": "http://localhost:3000"
+    },
+    {
+      "name": "raillens.client-ip.trusted-proxies",
+      "type": "java.lang.String",
+      "description": "Comma-separated CIDR ranges of reverse proxies whose forwarding headers are trusted for client-IP resolution. Defaults to loopback and private ranges.",
+      "defaultValue": "127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128,fc00::/7"
+    },
+    {
+      "name": "raillens.client-ip.trusted-header",
+      "type": "java.lang.String",
+      "description": "Optional single-value header carrying the client IP, set by a CDN in front of the trusted proxy (on Render: True-Client-IP). Only read when the request arrives from a trusted proxy."
     }
   ]
 }

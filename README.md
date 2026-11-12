@@ -87,13 +87,13 @@ The API starts on `http://localhost:8080`. With `springdoc-openapi` on the class
 
 ## API Endpoints
 
-All endpoints are under `/api/v1/`. Every route under `/api/**` is subject to `RateLimitInterceptor`; routes under `/api/v1/admin/**` additionally require an `X-Admin-Key` header, and routes under `/api/v1/auth/**` (except register/login/refresh/logout) require a valid `Authorization: Bearer <token>`.
+All endpoints are under `/api/v1/`. Every route under `/api/**` is subject to `RateLimitInterceptor`; routes under `/api/v1/admin/**` additionally require an `X-Admin-Key` header, as do **writes** (POST/PUT/PATCH/DELETE) to `/api/v1/trains`, `/api/v1/stations` and `/api/v1/schedules` (reads stay public), and routes under `/api/v1/auth/**` (except register/login/refresh/logout) require a valid `Authorization: Bearer <token>`.
 
 ### Trains — `TrainController`
 
 | Method | Path | Notes |
 |---|---|---|
-| `POST` | `/api/v1/trains` | Body: `CreateTrainRequest` (validated). Returns `TrainSearchResponse`. |
+| `POST` | `/api/v1/trains` | **Requires `X-Admin-Key`.** Body: `CreateTrainRequest` (validated). Returns `TrainSearchResponse`. |
 | `GET` | `/api/v1/trains` | Paginated (`?page=&size=&sort=`, default size 20). Returns `Page<TrainSearchResponse>`. |
 | `GET` | `/api/v1/trains/search?q=` | Free-text search, `@NotBlank @Size(max=100)`. |
 | `GET` | `/api/v1/trains/{trainNumber}` | Full route/schedule detail. |
@@ -114,7 +114,7 @@ curl http://localhost:8080/api/v1/trains/12345/intelligence
 
 | Method | Path | Notes |
 |---|---|---|
-| `POST` | `/api/v1/stations` | Body: `CreateStationRequest` (validated). Returns `StationSearchResponse`. |
+| `POST` | `/api/v1/stations` | **Requires `X-Admin-Key`.** Body: `CreateStationRequest` (validated). Returns `StationSearchResponse`. |
 | `GET` | `/api/v1/stations` | Paginated, same shape as `GET /api/v1/trains`. |
 | `GET` | `/api/v1/stations/search?q=` | Free-text search. |
 | `GET` | `/api/v1/stations/{stationCode}` | Station detail. Station code is uppercased before lookup. |
@@ -124,7 +124,7 @@ curl http://localhost:8080/api/v1/trains/12345/intelligence
 
 | Method | Path | Notes |
 |---|---|---|
-| `POST` | `/api/v1/schedules` | Body: `ScheduleRequest` (validated). Adds one stop to an existing train's route; evicts that train's and station's detail caches. |
+| `POST` | `/api/v1/schedules` | **Requires `X-Admin-Key`.** Body: `ScheduleRequest` (validated). Adds one stop to an existing train's route; evicts that train's and station's detail caches. |
 
 ### Journeys — `JourneyController`
 
@@ -187,7 +187,8 @@ RailLens uses a hand-rolled JWT scheme rather than Spring Security's filter-chai
 - **Access tokens** are short-lived bearer JWTs (default 60 minutes, `raillens.jwt.expiration-minutes`), issued on register/login and validated per-request by `JwtAuthInterceptor` against `/api/v1/auth/**` (except register/login/refresh/logout, which don't require one).
 - **Refresh tokens** are longer-lived (default 30 days, `raillens.jwt.refresh-expiration-days`), stored server-side via `RefreshTokenService`/`RefreshTokenRepository`, and single-use: exchanging one at `POST /api/v1/auth/refresh` revokes it and issues a new one.
 - **Admin routes** (`/api/v1/admin/**`) use a separate mechanism — a static shared secret in the `X-Admin-Key` header (`AdminApiKeyInterceptor`), not a user JWT.
-- **Rate limiting** — `RateLimitInterceptor` applies to all of `/api/**` (so admin routes can't be hammered around it), with a stricter `AuthRateLimitInterceptor` layered specifically on `/api/v1/auth/**` to slow down credential-stuffing/registration abuse.
+- **Rate limiting** — `RateLimitInterceptor` applies to all of `/api/**` (so admin routes can't be hammered around it), with a stricter `AuthRateLimitInterceptor` layered specifically on `/api/v1/auth/**` to slow down credential-stuffing/registration abuse. Buckets are keyed by the real client IP from `ClientIpResolver`: forwarding headers are believed only from trusted proxies, `X-Forwarded-For` is walked right to left (Render appends to it, so its leftmost entry is client-controlled), and on Render the Cloudflare-set `True-Client-IP` is used.
+- **Deny-by-default check** — auth is applied per path, so a new endpoint would be public by default. `EndpointAuthorizationTest` enumerates every registered write endpoint and fails the build if any accepts an anonymous caller (other than register/login/refresh/logout).
 - Trains/stations/schedules write endpoints (`POST /api/v1/trains`, etc.) remain unauthenticated pending a separate decision — this is a known, deliberate gap, not an oversight.
 
 ## Caching Strategy
