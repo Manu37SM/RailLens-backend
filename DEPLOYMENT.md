@@ -1,6 +1,6 @@
 # How to deploy RailLens and RailOps (all repos)
 
-**Last updated:** 12 Nov 2026, after Phase 2A (admin accounts with one-time codes).
+**Last updated:** 12 Nov 2026, after Phase 2B (website keeps the sign-in token in a secure cookie).
 
 This guide is the same file in every repo: `train-db`, `train-db-frontend`, `train-db-mobile` and `railops`. Open whichever one you have. It is updated after every phase. The newest version is always the one in `train-db`.
 
@@ -33,7 +33,11 @@ Update this table whenever you merge or deploy. (I'll update it at the end of ev
 | Phase 2A: admin accounts + one-time codes (DB migration **V7**) | `train-db` | ⏳ branch `security/phase2a-admin-mfa` | ❌ no | 2 new env vars (Section 6) |
 | Phase 2A: admin sign-in screens | `train-db-frontend` | ⏳ branch `security/phase2a-admin-mfa` | ❌ no | backend Phase 2A live first |
 | Phase 2A: admin sign-in screens | `train-db-mobile` | ⏳ branch `security/phase2a-admin-mfa` | ❌ no | backend Phase 2A live first, then build a new APK |
+| Phase 2B: backend trusts the visitor IP sent by the website's server | `train-db` | ⏳ branch `security/phase2b-web-cookie` (built on 2A: **merge 2A first**) | ❌ no | env var `RAILLENS_CLIENT_IP_PROXY_SECRET` (Section 6) |
+| Phase 2B: website keeps the refresh token in a secure cookie | `train-db-frontend` | ⏳ branch `security/phase2b-web-cookie` (built on 2A: **merge 2A first**) | ❌ no | backend 2B live first; env var `RAILLENS_PROXY_SECRET` (Section 7) |
 | RailOps (whole system) | `railops` | n/a | ❌ never deployed | follow `railops/deploy/render/README.md` |
+
+**Merging the branches:** each 2B branch contains the 2A commits too. Merge `security/phase2a-admin-mfa` first, then `security/phase2b-web-cookie`, in each repo. The mobile app has no 2B changes.
 
 **How to see what's live right now**
 - **Backend:** Render → `raillens-train-db` → **Events**. The newest "Deploy live" line shows the commit. Compare it with `git log` in `train-db`.
@@ -127,6 +131,7 @@ Render → `raillens-train-db` → **Environment**. `render.yaml` lists them too
 | `RAILLENS_MFA_ENCRYPTION_KEY` | `openssl rand -base64 32`. **Save a copy now** | **yes** | **Phase 2A** |
 | `RAILLENS_ADMIN_BOOTSTRAP_USERNAMES` | your own RailLens username (it must already be registered) | no | **Phase 2A** |
 | `RAILLENS_ADMIN_LEGACY_KEY_ENABLED` | leave unset (means `true`). Set `false` only in Section 11 | no | **Phase 2A** |
+| `RAILLENS_CLIENT_IP_PROXY_SECRET` | `openssl rand -base64 32`. **The same value** goes into Vercel as `RAILLENS_PROXY_SECRET` (Section 7) | **yes** | **Phase 2B** |
 
 `openssl` comes with **Git Bash** on Windows.
 
@@ -157,8 +162,11 @@ Only after the backend is live (Section 6).
 1. Vercel → project → **Settings → Environment Variables** (Production):
    - `NEXT_PUBLIC_API_BASE_URL` = `https://raillens-train-db.onrender.com/api/v1`
    - `NEXT_PUBLIC_SITE_URL` = `https://raillens.vercel.app`
+   - `RAILLENS_PROXY_SECRET` = **exactly** the value of `RAILLENS_CLIENT_IP_PROXY_SECRET` on Render (Phase 2B). Mark it *Sensitive*. Never give it a `NEXT_PUBLIC_` name: that would publish it in the website's JavaScript.
 
-   These are baked in when the site is built. **After changing one, redeploy.**
+   Variables are read when the site is built. **After changing one, redeploy.**
+
+   **What 2B changes (in plain words):** the website now signs people in through its own small server routes (`/api/auth/...`). Your long-lived sign-in token is kept in a cookie that page scripts can't read, instead of in the browser's `localStorage`. Vercel runs those routes for free as part of the same project; there's nothing extra to create.
 2. Merge the branch into `master`.
 3. Deploy: undo the Ignored Build Step from Section 3, or redeploy the newest commit.
 4. Run the website part of Section 10.
@@ -205,6 +213,11 @@ Things to know first:
 - [ ] Register a throwaway account, log out, log back in
 - [ ] (Phase 2A+) Admin: log in with password + code → you land on `/admin` and the stats load
 - [ ] (Phase 2A+) Log in as a normal user and open `/admin`: it must say you don't have an admin session
+- [ ] (Phase 2B+) Log in, then **reload the page**: you're still signed in
+- [ ] (Phase 2B+) Browser DevTools → **Application**:
+  - **Local Storage** → `raillens-auth` shows only username, email and role, no token
+  - **Cookies** → `__Secure-raillens_rt` is ticked **HttpOnly** and **Secure**
+- [ ] (Phase 2B+) Render logs must **not** show `Ignoring X-RailLens-Client-IP`
 
 **Android app**
 - [ ] Opens; train search works
@@ -230,6 +243,9 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 | Backend deploy failed | Render keeps the old version running. Read **Logs** for the first `ERROR`. A failed migration names the file (e.g. `V7__…`). Send me that line. |
 | Backend is live but broken | Render → **Events** → previous "Deploy live" → **Rollback**. The database changes stay, which is safe for V6/V7. Afterwards, check that **Auto-Deploy** is still **Off**, so the broken commit isn't redeployed. |
 | Website broken | Vercel → **Deployments** → previous production deployment → **⋯ → Promote / Instant Rollback**. |
+| (2B) Logged out after every page reload | The cookie isn't sticking. The site must be on `https://`. Check Vercel → **Logs** for `/api/auth/refresh` errors. |
+| (2B) Everyone gets "Too many requests" when logging in | The two proxy secrets differ or one is missing. Render's log says `Ignoring X-RailLens-Client-IP`. Make `RAILLENS_PROXY_SECRET` (Vercel) and `RAILLENS_CLIENT_IP_PROXY_SECRET` (Render) identical, then redeploy both. |
+| (2B) Website rolled back to a pre-2B version | Safe. People who signed in after 2B look signed out (the old site can't use the cookie) and just log in again. |
 | Website says "Unable to reach the server" | The backend is asleep (wait a minute) or down, or `NEXT_PUBLIC_API_BASE_URL` is wrong. Check Section 7, then redeploy. |
 | Browser console shows a CORS error | `RAILLENS_CORS_ALLOWED_ORIGINS` doesn't exactly match the website address (`https://…`, no trailing `/`). |
 | "Admin sign-in is not configured on this server" | `RAILLENS_MFA_ENCRYPTION_KEY` is missing on Render. |
@@ -243,3 +259,4 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 | Date | What changed |
 |---|---|
 | 12 Nov 2026 | First version: covers Phases 0, 1 and 2A, holding merges back from going live, the database check, and the Phase 2A admin setup. |
+| 12 Nov 2026 | Phase 2B: two matching proxy secrets (Render + Vercel), merge order 2A → 2B, cookie checks in the smoke test, three new troubleshooting rows. |
