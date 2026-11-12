@@ -15,7 +15,7 @@ public class RefreshTokenCleanupTask {
 
         @Scheduled(cron = "0 0 3 * * *")
         public void purgeStaleRefreshTokens() {
-                int deleted = refreshTokenService.purgeRevokedOrExpired();
+                int deleted = refreshTokenService.purgeExpiredAndLoggedOut();
 
                 if (deleted > 0) {
                         log.info("Refresh token cleanup: removed {} revoked/expired row(s)", deleted);

@@ -6,6 +6,7 @@ import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.UUID;
 
 import org.hibernate.Hibernate;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,47 +33,79 @@ public class RefreshTokenService {
         @Value("${raillens.jwt.refresh-expiration-days:30}")
         private long refreshExpirationDays;
 
+        /**
+         * Two tabs (or an app and its widget) refreshing at the same moment both present the same token; the second
+         * arrives just after the first rotated it. Within this window that is treated as a race, not a theft.
+         */
+        @Value("${raillens.auth.refresh-reuse-grace-seconds:10}")
+        private long reuseGraceSeconds;
+
+        /** Starts a new session (login, register): a new token family. */
         @Transactional
         public String issue(User user) {
+                return issue(user, UUID.randomUUID());
+        }
 
+        private String issue(User user, UUID familyId) {
                 String rawToken = generateRawToken();
-
                 RefreshToken entity = new RefreshToken(
                                 user,
                                 hash(rawToken),
-                                LocalDateTime.now().plusDays(refreshExpirationDays));
-
+                                LocalDateTime.now().plusDays(refreshExpirationDays),
+                                familyId);
                 refreshTokenRepository.save(entity);
-
                 return rawToken;
         }
 
-        @Transactional
+        /**
+         * Exchanges a refresh token for its successor in the same family.
+         *
+         * <p>Reuse detection: a token that was already rotated is only presented again if a copy exists somewhere else.
+         * Outside the grace window the whole family is revoked (the thief's and the user's tokens alike) and the user
+         * must log in again. Previously a stolen token simply raced the user, and whoever refreshed first kept the
+         * session for 30 days.
+         *
+         * <p>{@code noRollbackFor}: the family revocation must COMMIT even though the call ends in an exception.
+         */
+        @Transactional(noRollbackFor = InvalidCredentialsException.class)
         public RotatedToken rotate(String rawToken) {
+                RefreshToken existing = refreshTokenRepository.findByTokenHashForUpdate(hash(rawToken))
+                                .orElseThrow(RefreshTokenService::invalid);
+                LocalDateTime now = LocalDateTime.now();
 
-                RefreshToken existing = refreshTokenRepository.findByTokenHash(hash(rawToken))
-                                .filter(token -> token.isValid())
-                                .orElseThrow(() -> new InvalidCredentialsException("Invalid or expired refresh token"));
+                if (existing.isRevoked()) {
+                        LocalDateTime rotatedAt = existing.getRotatedAt();
+                        if (rotatedAt != null && rotatedAt.isBefore(now.minusSeconds(reuseGraceSeconds))) {
+                                int revoked = refreshTokenRepository.revokeFamily(existing.getFamilyId());
+                                log.warn("Refresh token reuse detected for user id {} (family {}): revoked {} token(s)",
+                                                existing.getUser().getId(), existing.getFamilyId(), revoked);
+                        }
+                        throw invalid();
+                }
+                if (!existing.getExpiresAt().isAfter(now)) {
+                        throw invalid();
+                }
 
                 existing.setRevoked(true);
+                existing.setRotatedAt(now);
                 refreshTokenRepository.save(existing);
 
                 User user = existing.getUser();
-
                 Hibernate.initialize(user);
 
-                String newRawToken = issue(user);
-
+                String newRawToken = issue(user, existing.getFamilyId());
                 return new RotatedToken(user, newRawToken);
         }
 
+        private static InvalidCredentialsException invalid() {
+                return new InvalidCredentialsException("Invalid or expired refresh token");
+        }
+
+        /** Logout ends the whole session: every token in the presented token's family. */
         @Transactional
         public void revoke(String rawToken) {
                 refreshTokenRepository.findByTokenHash(hash(rawToken))
-                                .ifPresent(token -> {
-                                        token.setRevoked(true);
-                                        refreshTokenRepository.save(token);
-                                });
+                                .ifPresent(token -> refreshTokenRepository.revokeFamily(token.getFamilyId()));
         }
 
         @Transactional
@@ -86,8 +119,8 @@ public class RefreshTokenService {
         }
 
         @Transactional
-        public int purgeRevokedOrExpired() {
-                return refreshTokenRepository.deleteRevokedOrExpired(LocalDateTime.now());
+        public int purgeExpiredAndLoggedOut() {
+                return refreshTokenRepository.deleteExpiredOrLoggedOut(LocalDateTime.now());
         }
 
         private String generateRawToken() {
