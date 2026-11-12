@@ -8,5 +8,10 @@ public record CurrentUserResponse(
 
                 String email,
 
-                LocalDateTime createdAt) {
+                LocalDateTime createdAt,
+
+                /** USER or ADMIN (V7, additive). */
+                String role,
+
+                boolean mfaEnabled) {
 }

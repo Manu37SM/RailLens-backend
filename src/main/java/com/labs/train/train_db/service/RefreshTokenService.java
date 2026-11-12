@@ -34,6 +34,13 @@ public class RefreshTokenService {
         private long refreshExpirationDays;
 
         /**
+         * MFA (admin) sessions end this long after the one-time code was entered, however often they refresh: the
+         * expiry is fixed at login and carried forward, not slid. Ordinary sessions keep the sliding 30 days.
+         */
+        @Value("${raillens.auth.mfa-session-hours:12}")
+        private long mfaSessionHours;
+
+        /**
          * Two tabs (or an app and its widget) refreshing at the same moment both present the same token; the second
          * arrives just after the first rotated it. Within this window that is treated as a race, not a theft.
          */
@@ -43,16 +50,26 @@ public class RefreshTokenService {
         /** Starts a new session (login, register): a new token family. */
         @Transactional
         public String issue(User user) {
-                return issue(user, UUID.randomUUID());
+                return issue(user, false);
         }
 
-        private String issue(User user, UUID familyId) {
+        /** As {@link #issue(User)}; {@code mfa} records that the session passed a one-time code (carried on rotation). */
+        @Transactional
+        public String issue(User user, boolean mfa) {
+                LocalDateTime expiresAt = mfa
+                                ? LocalDateTime.now().plusHours(mfaSessionHours)
+                                : LocalDateTime.now().plusDays(refreshExpirationDays);
+                return issue(user, UUID.randomUUID(), mfa, expiresAt);
+        }
+
+        private String issue(User user, UUID familyId, boolean mfa, LocalDateTime expiresAt) {
                 String rawToken = generateRawToken();
                 RefreshToken entity = new RefreshToken(
                                 user,
                                 hash(rawToken),
-                                LocalDateTime.now().plusDays(refreshExpirationDays),
+                                expiresAt,
                                 familyId);
+                entity.setMfa(mfa);
                 refreshTokenRepository.save(entity);
                 return rawToken;
         }
@@ -93,8 +110,11 @@ public class RefreshTokenService {
                 User user = existing.getUser();
                 Hibernate.initialize(user);
 
-                String newRawToken = issue(user, existing.getFamilyId());
-                return new RotatedToken(user, newRawToken);
+                LocalDateTime expiresAt = existing.isMfa()
+                                ? existing.getExpiresAt()
+                                : now.plusDays(refreshExpirationDays);
+                String newRawToken = issue(user, existing.getFamilyId(), existing.isMfa(), expiresAt);
+                return new RotatedToken(user, newRawToken, existing.isMfa());
         }
 
         private static InvalidCredentialsException invalid() {
@@ -138,6 +158,6 @@ public class RefreshTokenService {
                 }
         }
 
-        public record RotatedToken(User user, String rawToken) {
+        public record RotatedToken(User user, String rawToken, boolean mfa) {
         }
 }

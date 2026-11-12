@@ -16,7 +16,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Authenticates {@code Authorization: Bearer <jwt>} (same tokens as before). Authentication only: whether the
+ * Authenticates {@code Authorization: Bearer <jwt>} (same tokens as before). ROLE_ADMIN is added only for an admin
+ * token that passed MFA; single-purpose tokens (MFA enrolment) are rejected here. Authentication only: whether the
  * endpoint needs a user is decided by SecurityConfig, so a bad token on a PUBLIC read is ignored exactly as before.
  *
  * <p>Sets the {@code authenticatedUsername} request attribute the controllers already read, so no controller changes.
@@ -40,12 +41,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         throws ServletException, IOException {
                 String header = request.getHeader("Authorization");
                 if (header != null && header.startsWith(BEARER)) {
-                        String username = jwtService.validateAndGetUsername(header.substring(BEARER.length()));
-                        if (username != null) {
-                                var auth = new UsernamePasswordAuthenticationToken(username, null,
-                                                List.of(new SimpleGrantedAuthority("ROLE_USER")));
+                        JwtService.AccessClaims claims = jwtService.parseAccessToken(header.substring(BEARER.length()));
+                        if (claims != null) {
+                                // ADMIN only from a token minted after password + one-time code (see JwtService).
+                                List<SimpleGrantedAuthority> roles = claims.admin()
+                                                ? List.of(new SimpleGrantedAuthority("ROLE_USER"), new SimpleGrantedAuthority("ROLE_ADMIN"))
+                                                : List.of(new SimpleGrantedAuthority("ROLE_USER"));
+                                var auth = new UsernamePasswordAuthenticationToken(claims.username(), null, roles);
                                 SecurityContextHolder.getContext().setAuthentication(auth);
-                                request.setAttribute(USERNAME_ATTRIBUTE, username);
+                                request.setAttribute(USERNAME_ATTRIBUTE, claims.username());
                         } else {
                                 // Read by JsonAuthErrorHandler: keeps the old, more specific 401 message.
                                 request.setAttribute(JsonAuthErrorHandler.REASON_ATTRIBUTE, "Invalid or expired token");

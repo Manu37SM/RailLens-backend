@@ -63,7 +63,11 @@ All of the following are read from `application.properties` (see `application.pr
 |---|---|---|
 | `spring.datasource.url` / `username` / `password` | PostgreSQL connection | — (required) |
 | `spring.datasource.hikari.*` | Connection pool bounds (max size, idle timeout, etc.) | conservative, indie-scale defaults |
-| `raillens.admin.api-key` | Shared secret required in the `X-Admin-Key` header for every `/api/v1/admin/**` request. Left blank rejects all admin requests rather than leaving the routes open. | — (required) |
+| `raillens.mfa.encryption-key` | Base64 of 32 random bytes (`openssl rand -base64 32`): encrypts admins' authenticator secrets at rest. Required for admin sign-in. Changing it invalidates every enrolled authenticator. | — |
+| `raillens.admin.bootstrap-usernames` | Comma-separated existing accounts promoted to ADMIN at startup (never demotes). How the first admin is created. | — |
+| `raillens.admin.legacy-key-enabled` | Whether the old shared `X-Admin-Key` is still accepted (logged as a warning). Set `false` once the web and mobile admin screens use admin accounts. | `true` |
+| `raillens.admin.api-key` | LEGACY shared secret for the `X-Admin-Key` header, while `legacy-key-enabled=true`. Blank rejects the header rather than leaving routes open. | — |
+| `raillens.jwt.admin-expiration-minutes` / `raillens.auth.mfa-session-hours` | Admin access-token lifetime / absolute admin session lifetime (refresh does not extend it) | `15` / `12` |
 | `raillens.cors.allowed-origins` | Comma-separated list of origins allowed to call `/api/**` from a browser | `http://localhost:3000` |
 | `raillens.jwt.secret` | HMAC signing secret for auth JWTs — the app refuses to start if unset or under 32 bytes. Generate with `openssl rand -base64 32`. | — (required) |
 | `raillens.jwt.expiration-minutes` | Access token lifetime | `60` |
@@ -187,19 +191,28 @@ RailLens uses the **Spring Security filter chain** (`config/SecurityConfig`) wit
 | Route | Who |
 |---|---|
 | `GET` trains, stations, journeys, network, search, stats; `/actuator/health`, `/actuator/info`; Swagger | everyone |
-| `POST /api/v1/auth/register`, `login`, `refresh`, `logout` | everyone |
+| `POST /api/v1/auth/register`, `login`, `refresh`, `logout`, `mfa/enrol`, `mfa/confirm` | everyone (the MFA calls carry a 5-minute enrolment token in the body) |
 | other `/api/v1/auth/**` (`me`, `password`) | `Authorization: Bearer <access token>` |
-| `/api/v1/admin/**`, and writes to trains/stations/schedules | `X-Admin-Key` |
+| `/api/v1/admin/**`, and writes to trains/stations/schedules | admin access token (password + one-time code); legacy `X-Admin-Key` while enabled |
 | anything else | nobody (401) |
 
 - **Access tokens** are short-lived bearer JWTs (default 60 minutes, `raillens.jwt.expiration-minutes`), checked by `JwtAuthenticationFilter`. A bad token on a public read is ignored, as before.
 - **Refresh tokens** (default 30 days, `raillens.jwt.refresh-expiration-days`) are stored hashed and are single-use. Each login starts a **token family**; `POST /api/v1/auth/refresh` locks the row, rotates it, and issues the successor in the same family. **Reuse detection:** presenting an already-rotated token (outside a 10 s grace window for two tabs refreshing at once, `raillens.auth.refresh-reuse-grace-seconds`) means a copy was stolen, so the whole family is revoked and the user must log in again. Logout revokes the family. Rotated tokens are kept until they expire as evidence for this check (the cleanup job deletes only expired and logged-out tokens).
-- **Admin** is a shared secret in `X-Admin-Key` (`AdminKeyAuthenticationFilter`, constant-time compare). A wrong key is rejected with 401 even on public routes. To be replaced by per-person admin accounts with MFA (Phase 2).
-- **Errors** keep the `{timestamp,status,error}` shape and messages the web and mobile apps display (`JsonAuthErrorHandler`).
+- **Admin accounts with MFA** (Phase 2A, migration V7). `users.role` is `USER` or `ADMIN`. An admin signs in with their password **and** a 6-digit code from an authenticator app (RFC 6238 TOTP; Google/Microsoft Authenticator, Authy, 1Password…):
+  1. First sign-in (no MFA yet): `POST /auth/login` returns `mfaEnrolmentRequired: true`, no session, and an `enrolmentToken` (5 minutes, usable only for the two calls below).
+  2. `POST /auth/mfa/enrol {enrolmentToken}` returns `secret` and `otpauthUri` (show as a QR code).
+  3. `POST /auth/mfa/confirm {enrolmentToken, otp}` turns MFA on and returns an admin session.
+  4. Afterwards, `POST /auth/login {usernameOrEmail, password, otp}`. Without `otp` the answer is 401 with `"code": "MFA_REQUIRED"`; a wrong or reused code is 401 `INVALID_OTP` and counts toward lockout like a wrong password.
+
+  Each code works once (`users.mfa_last_step`, claimed with a conditional UPDATE so two simultaneous logins can't both use it). Secrets are stored AES-256-GCM encrypted (`MfaSecretCipher`, bound to the user id). Admin access tokens last 15 minutes and carry `role=ADMIN` + `mfa=true`; only such a token gets `ROLE_ADMIN`. Refresh re-reads the role from the database (demotion takes effect on the next refresh, at most 15 minutes) and takes the MFA flag from the session, never the client; an admin session ends 12 hours after sign-in however often it refreshes. A user promoted while signed in must sign in again to get admin rights.
+  - **First admin:** register the account normally, set `raillens.admin.bootstrap-usernames=<name>` and `raillens.mfa.encryption-key`, restart, then sign in to enrol. **Demote:** `UPDATE users SET role='USER' WHERE username='…'`. **Lost phone:** `UPDATE users SET mfa_enabled=false, mfa_secret=NULL WHERE username='…'`, then the admin enrols again at next sign-in. Run these only with the owner's approval.
+- **Legacy shared key:** `X-Admin-Key` (`AdminKeyAuthenticationFilter`, constant-time compare) still grants admin while `raillens.admin.legacy-key-enabled=true`, logging a warning per use, so the deployed web and mobile apps keep working during the switch. A wrong key is rejected with 401 even on public routes. With the flag `false`, the header is refused with "X-Admin-Key is no longer accepted - sign in with an admin account".
+- **Unknown usernames** are checked against a dummy BCrypt hash, so login takes as long as for a real account and timing doesn't reveal which usernames exist.
+- **Errors** keep the `{timestamp,status,error}` shape and messages the web and mobile apps display (`JsonAuthErrorHandler`). Errors a client must react to also carry a stable `code` (`MFA_REQUIRED`, `INVALID_OTP`, `INVALID_ENROLMENT_TOKEN`, `MFA_ALREADY_ENABLED`, `MFA_ENROLMENT_NOT_STARTED`, `MFA_NOT_CONFIGURED`); it is omitted elsewhere, so existing error bodies are unchanged.
 - **CORS** is configured by the `UrlBasedCorsConfigurationSource` bean in `SecurityConfig` (Spring Security only applies CORS when that bean exists).
 - **Security headers** come only from `SecurityHeadersFilter`; Spring Security's header defaults are disabled so public reads don't get `Cache-Control: no-cache`.
 - **Rate limiting** — `RateLimitInterceptor` applies to all of `/api/**`, with a stricter `AuthRateLimitInterceptor` on `/api/v1/auth/**`. Buckets are keyed by the real client IP from `ClientIpResolver`: forwarding headers are believed only from trusted proxies, `X-Forwarded-For` is walked right to left (Render appends to it, so its leftmost entry is client-controlled), and on Render the Cloudflare-set `True-Client-IP` is used.
-- **Tests that hold the line:** `EndpointAuthorizationTest` enumerates every registered write endpoint and fails the build if any accepts an anonymous caller; `SecurityChainTest` covers credentials, error messages, CORS and headers; `RefreshTokenFamilyTest` covers reuse detection, the row lock and cleanup on real PostgreSQL.
+- **Tests that hold the line:** `EndpointAuthorizationTest` enumerates every registered write endpoint and fails the build if any accepts an anonymous caller; `SecurityChainTest` covers credentials, error messages, CORS and headers; `RefreshTokenFamilyTest` covers reuse detection, the row lock, cleanup and the MFA session cap on real PostgreSQL; `AdminMfaFlowTest` runs enrolment, code replay, refresh, demotion and the disabled legacy key end to end; `TotpTest` checks the RFC 6238 vectors.
 
 ## Caching Strategy
 
@@ -229,13 +242,13 @@ Tests use JUnit 5, Mockito, and AssertJ, and are organized to mirror `src/main/j
 - Core services: `TrainService`, `StationService`, `JourneyService`, `ScheduleService`, `RailwayDataImportService`, `AdminService`, `AuthService`, `RefreshTokenService`, `JwtService`.
 - Railway Intelligence services: `TrainIntelligenceService`, `StationIntelligenceService`, `RouteAnalyticsService`, `RailwayNetworkService` (under `service/network/`), `RankingsService`, `FunStatsService`, `AchievementsService`, `DatasetHealthService`, `SmartSearchQueryParser`, `SmartSearchService`.
 - Shared utilities: `JourneyDayCalculator`, `FuzzyMatch`.
-- Cross-cutting: `GlobalExceptionHandler`, interceptors (`RateLimitInterceptor`, `AuthRateLimitInterceptor`, `AdminApiKeyInterceptor`, `JwtAuthInterceptor`), `RequestIdFilter`.
+- Cross-cutting: `GlobalExceptionHandler`, rate-limit interceptors (`RateLimitInterceptor`, `AuthRateLimitInterceptor`), `ClientIpResolver`, `RequestIdFilter`, `SecurityHeadersFilter`.
+- Security (`security/`): `SecurityChainTest`, `EndpointAuthorizationTest`, `RefreshTokenFamilyTest`, `AdminMfaFlowTest`, `TotpTest`, `MfaSecretCipherTest`. The ones that boot the app need a local PostgreSQL.
 
 ## Known Gaps / Explicitly Out of Scope
 
 - **No live train data.** RailLens works from a static, periodically-imported CSV dataset. Live running status, PNR status, seat availability, platform information, coach position, and delay information all require third-party/government real-time APIs that this project has deliberately chosen not to integrate — these were considered and explicitly removed from the product direction, not simply "not built yet."
 - **Schema-integrity migration drafted but not applied.** `V2__enforce_schedule_integrity_constraints.sql` (see Database above) would close the schema review's `NOT NULL`/`UNIQUE` gaps on `train_schedule`, but is deliberately gated behind `spring.flyway.target=1` pending a live-database review of its pre-flight diagnostics.
-- **Trains/stations/schedules write endpoints are unauthenticated.** Only `/api/v1/admin/**` (API key) and `/api/v1/auth/**` (JWT) currently enforce authentication.
 - **The bulk CSV import runs as one large synchronous, unbatched transaction.** This is a known, documented risk for very large datasets and is intentionally left unchanged pending a database environment to validate a batching fix against — see the current backend architecture review for detail.
 
 ## License

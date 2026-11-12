@@ -18,10 +18,13 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * {@code X-Admin-Key} grants ROLE_ADMIN. A WRONG key is rejected immediately (401), not downgraded to anonymous,
- * so a typo never silently falls through to a public response. Constant-time comparison, as before.
- * Phase 2 replaces the shared key with per-person admin accounts + MFA.
- * Not a @Component, for the same reason as JwtAuthenticationFilter.
+ * LEGACY: the shared {@code X-Admin-Key} grants ROLE_ADMIN. Replaced by per-person admin accounts with MFA (V7);
+ * kept during the transition while {@code raillens.admin.legacy-key-enabled=true} so deployed clients keep working,
+ * logging a warning on each use. With the flag false, any request carrying the header is refused with a message
+ * telling the caller to sign in with an admin account.
+ *
+ * <p>A WRONG key is rejected immediately (401), not downgraded to anonymous, so a typo never silently falls through
+ * to a public response. Constant-time comparison. Not a @Component, for the same reason as JwtAuthenticationFilter.
  */
 @Slf4j
 public class AdminKeyAuthenticationFilter extends OncePerRequestFilter {
@@ -29,11 +32,15 @@ public class AdminKeyAuthenticationFilter extends OncePerRequestFilter {
         static final String HEADER = "X-Admin-Key";
 
         private final JsonAuthErrorHandler errors;
-        private final String configuredKey;
+        static final String DISABLED_MESSAGE = HEADER + " is no longer accepted - sign in with an admin account";
 
-        public AdminKeyAuthenticationFilter(JsonAuthErrorHandler errors, String configuredKey) {
+        private final String configuredKey;
+        private final boolean enabled;
+
+        public AdminKeyAuthenticationFilter(JsonAuthErrorHandler errors, String configuredKey, boolean enabled) {
                 this.errors = errors;
                 this.configuredKey = configuredKey;
+                this.enabled = enabled;
         }
 
         @Override
@@ -42,6 +49,12 @@ public class AdminKeyAuthenticationFilter extends OncePerRequestFilter {
                 String provided = request.getHeader(HEADER);
                 if (provided == null) {
                         chain.doFilter(request, response);
+                        return;
+                }
+                if (!enabled) {
+                        log.warn("Rejecting {} {} - legacy {} header used but disabled",
+                                        request.getMethod(), request.getRequestURI(), HEADER);
+                        errors.write(response, HttpStatus.UNAUTHORIZED, DISABLED_MESSAGE);
                         return;
                 }
                 if (configuredKey == null || configuredKey.isBlank()) {
@@ -56,6 +69,8 @@ public class AdminKeyAuthenticationFilter extends OncePerRequestFilter {
                         errors.write(response, HttpStatus.UNAUTHORIZED, "Missing or invalid " + HEADER + " header");
                         return;
                 }
+                log.warn("Legacy {} used for {} {} - move this client to an admin account with MFA, then set "
+                                + "raillens.admin.legacy-key-enabled=false", HEADER, request.getMethod(), request.getRequestURI());
                 SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                                 "admin-api-key", null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
                 chain.doFilter(request, response);

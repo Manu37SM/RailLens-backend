@@ -3,7 +3,7 @@
     {
       "name": "raillens.admin.api-key",
       "type": "java.lang.String",
-      "description": "Shared secret required in the X-Admin-Key header for every /api/v1/admin/** route and for catalogue writes (see AdminKeyAuthenticationFilter / SecurityConfig). Fails closed - if unset/blank, every admin request is rejected rather than left open. Local dev only in the gitignored application.properties; rotate before any non-local deployment.",
+      "description": "LEGACY shared secret in the X-Admin-Key header (see raillens.admin.legacy-key-enabled). Replaced by admin accounts with MFA. Fails closed if blank.",
       "defaultValue": ""
     },
     {
@@ -45,6 +45,42 @@
       "type": "java.lang.Long",
       "defaultValue": 10,
       "description": "Seconds after a refresh-token rotation during which re-presenting the old token is treated as a concurrent refresh (rejected) rather than theft (whole family revoked)."
+    },
+    {
+      "name": "raillens.admin.legacy-key-enabled",
+      "type": "java.lang.Boolean",
+      "defaultValue": true,
+      "description": "Transition switch for the shared X-Admin-Key. true (default): still accepted, with a warning logged on each use. false: any request carrying the header is refused; admins sign in with their own account + MFA."
+    },
+    {
+      "name": "raillens.admin.bootstrap-usernames",
+      "type": "java.lang.String",
+      "defaultValue": "",
+      "description": "Comma-separated existing usernames promoted to ADMIN at startup (promotion only, never demotes). Requires raillens.mfa.encryption-key."
+    },
+    {
+      "name": "raillens.mfa.encryption-key",
+      "type": "java.lang.String",
+      "defaultValue": "",
+      "description": "Base64 of 32 random bytes (openssl rand -base64 32): AES-256-GCM key for TOTP secrets at rest. Required for admin sign-in. Changing it invalidates every enrolled authenticator."
+    },
+    {
+      "name": "raillens.mfa.enrolment-token-minutes",
+      "type": "java.lang.Long",
+      "defaultValue": 5,
+      "description": "Lifetime of the single-purpose token an admin without MFA receives at sign-in to enrol an authenticator."
+    },
+    {
+      "name": "raillens.jwt.admin-expiration-minutes",
+      "type": "java.lang.Long",
+      "defaultValue": 15,
+      "description": "Lifetime of admin (MFA) access tokens. Bounds how long a demotion or a stolen admin token stays effective."
+    },
+    {
+      "name": "raillens.auth.mfa-session-hours",
+      "type": "java.lang.Long",
+      "defaultValue": 12,
+      "description": "Absolute lifetime of an MFA (admin) session from sign-in; refreshing does not extend it."
     }
   ]
 }

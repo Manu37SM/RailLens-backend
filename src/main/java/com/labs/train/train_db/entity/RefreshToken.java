@@ -53,6 +53,10 @@ public class RefreshToken {
         /** Set when this token was exchanged for its successor; null if revoked by logout or still live. */
         private LocalDateTime rotatedAt;
 
+        /** The session this token belongs to was established with MFA (V7). Carried forward on rotation. */
+        @Column(nullable = false)
+        private boolean mfa = false;
+
         public RefreshToken(User user, String tokenHash, LocalDateTime expiresAt, UUID familyId) {
                 this.user = user;
                 this.tokenHash = tokenHash;

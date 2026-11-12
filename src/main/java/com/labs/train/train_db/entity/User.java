@@ -42,4 +42,29 @@ public class User {
 
     private LocalDateTime lockedUntil;
 
+    /** USER or ADMIN (V7). Admin rights also require an MFA session; see JwtAuthenticationFilter. */
+    @Column(nullable = false, length = 16)
+    private String role = ROLE_USER;
+
+    /** AES-256-GCM ciphertext of the TOTP secret (MfaSecretCipher); null until enrolment starts. */
+    private byte[] mfaSecret;
+
+    @Column(nullable = false)
+    private boolean mfaEnabled = false;
+
+    /**
+     * Last accepted TOTP time step: each code works once. Written ONLY by UserRepository.claimMfaStep (a conditional
+     * UPDATE): AuthService saves detached User objects, and a full merge carrying a stale value here would let an
+     * already-used code work again.
+     */
+    @Column(insertable = false, updatable = false)
+    private Long mfaLastStep;
+
+    public static final String ROLE_USER = "USER";
+    public static final String ROLE_ADMIN = "ADMIN";
+
+    public boolean isAdmin() {
+        return ROLE_ADMIN.equals(role);
+    }
+
 }

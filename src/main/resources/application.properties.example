@@ -53,12 +53,24 @@ spring.datasource.hikari.connection-timeout=30000
 spring.datasource.hikari.idle-timeout=600000
 spring.datasource.hikari.max-lifetime=1800000
 
-# Shared secret required in the X-Admin-Key header for every /api/v1/admin/**
-# request (currently just the bulk CSV import). There is no other
-# authentication in this project yet - if this is left blank, /api/v1/admin/**
-# rejects all requests rather than being silently open. Set this to a long
-# random value and keep it out of version control.
+# Admin accounts (see README "Authentication"). Admins sign in with their
+# own password plus a one-time code from an authenticator app.
+#
+# Encrypts admins' authenticator secrets in the database. Required for admin
+# sign-in. Generate with `openssl rand -base64 32`; keep it out of version
+# control. Changing it invalidates every enrolled authenticator.
+raillens.mfa.encryption-key=<BASE64_32_BYTES>
+#
+# Existing accounts to promote to ADMIN at startup (comma-separated). Promotes
+# only, never demotes. Each enrols an authenticator at their next sign-in.
+raillens.admin.bootstrap-usernames=
+#
+# LEGACY shared secret for the X-Admin-Key header. Still accepted (with a
+# warning in the log) while legacy-key-enabled=true, so older web/mobile
+# builds keep working. Set legacy-key-enabled=false once every admin client
+# signs in with an admin account.
 raillens.admin.api-key=<ADMIN_API_KEY>
+raillens.admin.legacy-key-enabled=true
 
 # Comma-separated list of origins allowed to call /api/** from a browser.
 # Defaults to http://localhost:3000 if unset. Set this to your deployed
