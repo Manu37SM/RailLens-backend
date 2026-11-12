@@ -24,4 +24,8 @@ services:
         generateValue: true
       - key: RAILLENS_CORS_ALLOWED_ORIGINS
         sync: false
+      # Render's proxy appends to X-Forwarded-For (it doesn't replace it), so the leftmost entry is client-controlled.
+      # Cloudflare fronts every Render service and sets True-Client-IP; Render support recommends reading it.
+      - key: RAILLENS_CLIENT_IP_TRUSTED_HEADER
+        value: True-Client-IP
 

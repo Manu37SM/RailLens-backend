@@ -36,6 +36,15 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addInterceptor(adminApiKeyInterceptor)
                 .addPathPatterns("/api/v1/admin/**");
 
+        // Catalogue writes. These lived outside /api/v1/admin/** and were reachable WITHOUT any credential:
+        // anyone could POST trains, stations and schedules into the production database. Reads stay public.
+        // EndpointAuthorizationTest fails if any future write endpoint is left unprotected.
+        registry.addInterceptor(new WriteMethodsOnly(adminApiKeyInterceptor))
+                .addPathPatterns(
+                        "/api/v1/trains", "/api/v1/trains/**",
+                        "/api/v1/stations", "/api/v1/stations/**",
+                        "/api/v1/schedules", "/api/v1/schedules/**");
+
         registry.addInterceptor(authRateLimitInterceptor)
                 .addPathPatterns("/api/v1/auth/**");
 

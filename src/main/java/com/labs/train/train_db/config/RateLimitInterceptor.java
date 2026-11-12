@@ -8,6 +8,10 @@ public class RateLimitInterceptor extends AbstractRateLimitInterceptor {
         private static final int MAX_REQUESTS_PER_WINDOW = 120;
         private static final long WINDOW_MILLIS = 60_000L;
 
+        public RateLimitInterceptor(ClientIpResolver clientIpResolver) {
+                super(clientIpResolver);
+        }
+
         @Override
         protected int getMaxRequestsPerWindow() {
                 return MAX_REQUESTS_PER_WINDOW;
