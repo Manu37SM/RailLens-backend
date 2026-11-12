@@ -99,6 +99,11 @@
       "type": "java.lang.String",
       "defaultValue": "",
       "description": "Exact issuer RailOps puts in its tokens (its JWT_ISSUER, on Render the identity service's URL). Required when raillens.railops.jwks-url is set."
+    },
+    {
+      "name": "raillens.railops.api-url",
+      "type": "java.lang.String",
+      "description": "Phase 4D: RailOps identity service URL that receives password changes and account closing for linked profiles. Blank = raillens.railops.issuer."
     }
   ]
 }

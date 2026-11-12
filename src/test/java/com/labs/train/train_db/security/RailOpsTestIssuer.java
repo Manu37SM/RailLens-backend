@@ -36,7 +36,13 @@ final class RailOpsTestIssuer {
         static void register(DynamicPropertyRegistry r) {
                 r.add("raillens.railops.jwks-url", () -> "http://127.0.0.1:" + JWKS.getAddress().getPort() + "/.well-known/jwks.json");
                 r.add("raillens.railops.issuer", () -> ISSUER);
+                r.add("raillens.railops.api-url", () -> "http://127.0.0.1:" + JWKS.getAddress().getPort());
         }
+
+        /** Phase 4D fake account endpoints: this password is "right"; a new password "weak-1" is refused with 422. */
+        static final String RIGHT_PASSWORD = "right-password-1";
+        /** Calls received, as "path|Authorization header|body". */
+        static final java.util.Queue<String> ACCOUNT_CALLS = new java.util.concurrent.ConcurrentLinkedQueue<>();
 
         record Claims(UUID sub, String email, String issuer, String audience, Instant expires, List<String> roles,
                         List<String> grants, List<String> amr, KeyPair keys) {
@@ -88,6 +94,16 @@ final class RailOpsTestIssuer {
                                 ex.getResponseBody().write(body);
                                 ex.close();
                         });
+                        for (String path : List.of("/api/v1/auth/password", "/api/v1/auth/erase")) {
+                                s.createContext(path, ex -> {
+                                        String sent = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                                        ACCOUNT_CALLS.add(path + "|" + ex.getRequestHeaders().getFirst("Authorization") + "|" + sent);
+                                        int status = !sent.contains("\"" + RIGHT_PASSWORD + "\"") ? 401
+                                                        : sent.contains("\"weak-1\"") ? 422 : 204;
+                                        ex.sendResponseHeaders(status, -1);
+                                        ex.close();
+                                });
+                        }
                         s.setExecutor(null);
                         s.start();
                         return s;   // lives for the whole test JVM, shared by every test class

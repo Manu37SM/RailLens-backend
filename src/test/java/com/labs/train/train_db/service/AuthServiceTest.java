@@ -206,7 +206,7 @@ class AuthServiceTest {
                 when(passwordEncoder.matches("old-password", "old-hash")).thenReturn(true);
                 when(passwordEncoder.encode("newPassword1")).thenReturn("new-hash");
 
-                authService.changePassword("manish", request);
+                authService.changePassword("manish", request, null);
 
                 assertThat(user.getPasswordHash()).isEqualTo("new-hash");
                 verify(refreshTokenService).revokeAllForUser(user);

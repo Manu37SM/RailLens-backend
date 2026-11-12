@@ -1,6 +1,6 @@
 # How to deploy RailLens and RailOps (all repos)
 
-**Last updated:** 13 Nov 2026, after Phase 4C (moving RailLens accounts into the RailOps login).
+**Last updated:** 13 Nov 2026, after Phase 4D for the backend and website (the switch to one login, behind a setting that stays off until you flip it). The Android app's part of 4D comes next.
 
 This guide is the same file in every repo: `train-db`, `train-db-frontend`, `train-db-mobile` and `railops`. Open whichever one you have. It is updated after every phase. The newest version is always the one in `train-db`.
 
@@ -41,8 +41,11 @@ Update this table whenever you merge or deploy. (I'll update it at the end of ev
 | Phase 4A: RailOps login gets "app sessions" (for the RailLens Android app and website server) and puts the email in its tokens | `railops` (identity service, gateway) | n/a (in the zip) | ❌ never deployed | nothing extra: no new settings; nothing uses it yet |
 | Phase 4B: RailLens backend can also accept RailOps logins (DB migration **V8**) | `train-db` | ⏳ branch `security/phase4b-railops-tokens` (built on 2B: **merge 2A, then 2B, then 4B**) | ❌ no | nothing until RailOps is live. Then two optional settings (Section 6.1). V8 runs by itself and is safe to roll back. |
 | Phase 4C: move RailLens accounts into the RailOps login (same email and password) | `train-db` (export) + `railops` (identity: DB migration **V4**, staff-app button) | ⏳ `train-db` branch `security/phase4c-account-move` (built on 4B); railops in the zip | ❌ no | RailOps live; RailLens has the two 4B settings. Then run it once: `railops/docs/runbooks/move-raillens-accounts.md` |
+| Phase 4D: RailOps login gets "change my password" and "close my account"; gateway accepts the visitor IP from the RailLens website server | `railops` (identity, gateway) | n/a (in the zip) | ❌ never deployed | new gateway setting `RAILOPS_EDGE_PROXY_SECRET` (printed by `print-env.sh` after re-running `gen-secrets.sh`) |
+| Phase 4D: RailLens backend forwards password change / account closing for linked accounts to RailOps | `train-db` | ⏳ branch `security/phase4d-login-switch` (built on 4C) | ❌ no | RailOps 4D live. Optional setting `RAILLENS_RAILOPS_API_URL` (Section 6.1). No migration. |
+| Phase 4D: website can sign in through RailOps (**off until you set `NEXT_PUBLIC_RAILLENS_LOGIN_PROVIDER=railops`**) | `train-db-frontend` | ⏳ branch `security/phase4d-login-switch` (built on 2B) | ❌ no | merge and deploy any time (changes nothing while the setting is unset). Flip the setting only by the order in Section 9b. |
 
-**Merging the branches:** each branch contains the ones before it. In `train-db`, merge in this order: `security/phase2a-admin-mfa` → `security/phase2b-web-cookie` → `security/phase4b-railops-tokens` → `security/phase4c-account-move`. In `train-db-frontend`: 2A → 2B. The mobile app has only 2A.
+**Merging the branches:** each branch contains the ones before it. In `train-db`, merge in this order: `security/phase2a-admin-mfa` → `security/phase2b-web-cookie` → `security/phase4b-railops-tokens` → `security/phase4c-account-move` → `security/phase4d-login-switch`. In `train-db-frontend`: 2A → 2B → `security/phase4d-login-switch`. The mobile app has only 2A so far.
 
 **How to see what's live right now**
 - **Backend:** Render → `raillens-train-db` → **Events**. The newest "Deploy live" line shows the commit. Compare it with `git log` in `train-db`.
@@ -139,6 +142,7 @@ Render → `raillens-train-db` → **Environment**. `render.yaml` lists them too
 | `RAILLENS_CLIENT_IP_PROXY_SECRET` | `openssl rand -base64 32`. **The same value** goes into Vercel as `RAILLENS_PROXY_SECRET` (Section 7) | **yes** | **Phase 2B** |
 | `RAILLENS_RAILOPS_JWKS_URL` | **Leave unset until RailOps is live.** Then: RailOps identity URL + `/.well-known/jwks.json` (e.g. `https://railops-identity.onrender.com/.well-known/jwks.json`) | no | **Phase 4B** |
 | `RAILLENS_RAILOPS_ISSUER` | Set together with the line above: exactly RailOps' `JWT_ISSUER` (on Render, the identity service's URL, e.g. `https://railops-identity.onrender.com`) | no | **Phase 4B** |
+| `RAILLENS_RAILOPS_API_URL` | Usually **leave unset**: it then uses `RAILLENS_RAILOPS_ISSUER`, which is the right address on Render. Where password changes and account closing for linked accounts are sent | no | **Phase 4D** |
 
 `openssl` comes with **Git Bash** on Windows.
 
@@ -170,6 +174,11 @@ Only after the backend is live (Section 6).
    - `NEXT_PUBLIC_API_BASE_URL` = `https://raillens-train-db.onrender.com/api/v1`
    - `NEXT_PUBLIC_SITE_URL` = `https://raillens.vercel.app`
    - `RAILLENS_PROXY_SECRET` = **exactly** the value of `RAILLENS_CLIENT_IP_PROXY_SECRET` on Render (Phase 2B). Mark it *Sensitive*. Never give it a `NEXT_PUBLIC_` name: that would publish it in the website's JavaScript.
+
+   - **Phase 4D (only when Section 9b tells you to):**
+     - `NEXT_PUBLIC_RAILLENS_LOGIN_PROVIDER` = `railops` switches sign-in to RailOps. Unset or `raillens` = RailLens' own login, exactly as before. This one is safe to be public.
+     - `RAILOPS_API_URL` = the RailOps gateway address, e.g. `https://railops-gateway.onrender.com`.
+     - `RAILOPS_PROXY_SECRET` = **exactly** the gateway's `RAILOPS_EDGE_PROXY_SECRET` (in RailOps' `deploy/render/out/gateway.env`). Mark it *Sensitive*. Never with a `NEXT_PUBLIC_` name.
 
    Variables are read when the site is built. **After changing one, redeploy.**
 
@@ -203,7 +212,7 @@ Only after the backend is live. "Deploying" the app means building a new APK and
 
 Things to know first:
 - RailOps payments are **simulated**. Nobody can be charged real money. Keep it that way until a real payment provider is built and reviewed.
-- RailOps is separate from RailLens for now. Logging in to one does not log you in to the other until the "single login" phase is done. When it is, this guide will gain a section on the order to deploy both.
+- RailOps and RailLens have separate logins until you do the switch-over in Section 9b. After it, one RailOps account signs in to both.
 - RailOps uses its **own** Neon project. Don't point it at the RailLens database.
 - Since Phase 3A the RailOps web app looks like RailLens (same colours, font and light/dark switch). There are no new settings to make.
 - **Since Phase 3B, RailOps gets its trains from RailLens.** A new RailOps database has no trains at all. After deploying, an admin opens trains for booking: RailOps web app → **Run operations** → **Open a train for booking** (train number, dates, coaches). Step by step: `railops/docs/runbooks/open-trains-for-booking.md`.
@@ -215,14 +224,37 @@ Things to know first:
 
 ---
 
-## 9b. Coming next: one login for both apps
+## 9b. One login for both apps
 
-RailLens is moving to RailOps' login, so one account books tickets and uses RailLens. The plan, step by step, is in `railops/docs/single-login-plan.md`. Steps 4A to 4C change nothing users can see.
+RailLens is moving to RailOps' login, so one account books tickets and uses RailLens. The plan is in `railops/docs/single-login-plan.md`. Steps 4A to 4C change nothing users can see. **4D is the one switch-over**, and it sits behind one website setting, so you choose the moment and can undo it.
 
-**When both apps are live, in this order:**
+### Before the switch (when both apps are live)
 1. Set RailLens' two RailOps settings (Section 6.1: `RAILLENS_RAILOPS_JWKS_URL`, `RAILLENS_RAILOPS_ISSUER`) and redeploy RailLens' backend.
-2. Sign in to the RailOps staff app as the nationwide admin (with your authenticator code) → **Run operations** → **Move RailLens accounts**. Details and what the result lines mean: `railops/docs/runbooks/move-raillens-accounts.md`.
-3. Give staff roles in RailOps to any RailLens admins it lists (they're moved as passengers on purpose). **Step 4D is the one switch-over**: everyone starts signing in through RailOps, and people keep their passwords. When 4D is ready, this guide will get an exact order and a rollback for it. Until then there is nothing to do.
+2. Sign in to the RailOps staff app as the nationwide admin (with your authenticator code) → **Run operations** → **Move RailLens accounts**. Details: `railops/docs/runbooks/move-raillens-accounts.md`.
+3. Give staff roles in RailOps to any RailLens admins it lists (they're moved as passengers on purpose).
+
+### The switch (4D), in this order
+1. **RailOps:** run `scripts/gen-secrets.sh` once more (it only adds the new `raillens_proxy_secret`, it changes nothing else), then `deploy/render/print-env.sh gateway`. Put the new `RAILOPS_EDGE_PROXY_SECRET` line on the gateway in Render, and deploy the RailOps 4D version of **identity** and **gateway**.
+2. **RailLens backend:** merge `security/phase4d-login-switch` and deploy (Section 6.2). No migration. From now on, a moved account that is still signed in with the old RailLens login can't change its password or close its account on the website (it gets "This account uses the RailOps sign-in"). That lasts until step 5, so keep the gap short.
+3. **Run the account move again** (step 2 above). It picks up anyone who signed up on RailLens since the first run. You want **"0 to move"** at the end. Anyone left unmoved can't sign in after the switch: the site tells them their email "already has a RailLens account that isn't linked".
+4. **Website, code only:** merge `security/phase4d-login-switch` and deploy with the provider setting still unset. Nothing changes for anyone. (You can do this step any time before.)
+5. **Flip it:** Vercel → add the three Phase 4D variables from Section 7 (`NEXT_PUBLIC_RAILLENS_LOGIN_PROVIDER=railops`, `RAILOPS_API_URL`, `RAILOPS_PROXY_SECRET`) → **redeploy**.
+6. **Check** (5 minutes, in a private window):
+   - Sign in with an **old RailLens account**: email (not username) + the same password as before. It works and shows the same username, favourites and settings.
+   - **Register** a new account: email, phone number, a 10+ character password. You land signed in.
+   - Reload the page: still signed in.
+   - **Account → Change password**, then sign in with the new one.
+   - As an admin: sign in with email + password, click "Staff? Add your one-time code", type the code. You reach the admin pages.
+   - Everyone who was signed in before the switch has to **sign in once more**. That's expected.
+
+**What changes for people:** sign in with email; new accounts need a phone number and a 10+ character password; admins type their authenticator code on the same screen; setting up a new authenticator is done in the RailOps staff app.
+
+**The Android app** still uses RailLens' own login until its part of 4D (next). Moved accounts keep working there with their old password. People who **sign up on the website after the switch** can't sign in to the app until then.
+
+### Rollback (undo the switch)
+Vercel → remove `NEXT_PUBLIC_RAILLENS_LOGIN_PROVIDER` (or set it to `raillens`) → **redeploy**. Or **Instant Rollback** to the deployment before the flip. Leave RailOps and the RailLens backend as they are.
+
+After a rollback everyone signs in once more with the RailLens login. **Who can't:** people who registered after the switch, or changed their password after it (their password now lives only in RailOps). Tell them to wait, fix what made you roll back, and flip it on again. Their accounts are fine.
 
 ## 10. Smoke test after every deploy (5 minutes)
 
@@ -241,6 +273,7 @@ RailLens is moving to RailOps' login, so one account books tickets and uses Rail
   - **Local Storage** → `raillens-auth` shows only username, email and role, no token
   - **Cookies** → `__Secure-raillens_rt` is ticked **HttpOnly** and **Secure**
 - [ ] (Phase 2B+) Render logs must **not** show `Ignoring X-RailLens-Client-IP`
+- [ ] (After the 4D switch) The checks in Section 9b step 6. In DevTools the cookie is now `__Secure-raillens_ro_rt` (HttpOnly, Secure)
 
 **Android app**
 - [ ] Opens; train search works
@@ -273,6 +306,11 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 | Browser console shows a CORS error | `RAILLENS_CORS_ALLOWED_ORIGINS` doesn't exactly match the website address (`https://…`, no trailing `/`). |
 | "Admin sign-in is not configured on this server" | `RAILLENS_MFA_ENCRYPTION_KEY` is missing on Render. |
 | Admin lost their phone | Ask me. It's a one-line database change (`README.md` → Authentication → "Lost phone"), done only with your OK. |
+| (4D) After the switch: "Sign-in is not configured yet" | `RAILOPS_API_URL` is missing on Vercel. Add it and redeploy. |
+| (4D) After the switch: everyone gets "Too many attempts" | `RAILOPS_PROXY_SECRET` (Vercel) and `RAILOPS_EDGE_PROXY_SECRET` (RailOps gateway) differ, or one is missing. Make them identical and redeploy both. |
+| (4D) "This email already has a RailLens account that isn't linked" | That account wasn't moved. Run the account move again (Section 9b, step 3), then the person signs in again. |
+| (4D) Admin can't sign in | They need the one-time code ("Staff? Add your one-time code"). If they never set up an authenticator in RailOps, they do that in the RailOps staff app first. |
+| (4D) Anything else after the switch | Roll back (Section 9b → Rollback), then send me the Vercel log lines for `/api/auth/login`. |
 | App update won't install | `versionCode` wasn't raised, or it was signed with a different key than last time. |
 
 ---
@@ -288,3 +326,4 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 | 13 Nov 2026 | Phase 4A in the tracker; new section 9b announcing the single-login plan and its one breaking step (4D). |
 | 13 Nov 2026 | Phase 4B: new branch and merge order, migration V8, two optional backend settings (leave unset until RailOps is live). |
 | 13 Nov 2026 | Phase 4C: account move (tracker, merge order, the three-step order in 9b). |
+| 13 Nov 2026 | Phase 4D (backend + website): the switch-over order, checks and rollback in 9b; new website settings (Section 7); optional backend setting; RailOps gateway secret; five troubleshooting rows. |

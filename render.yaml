@@ -43,4 +43,6 @@ services:
         sync: false
       - key: RAILLENS_RAILOPS_ISSUER
         sync: false
+      - key: RAILLENS_RAILOPS_API_URL
+        sync: false
 

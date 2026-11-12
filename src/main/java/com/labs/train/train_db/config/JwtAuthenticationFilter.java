@@ -36,6 +36,8 @@ import jakarta.servlet.http.HttpServletResponse;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         static final String USERNAME_ATTRIBUTE = "authenticatedUsername";
+        /** Phase 4D: only for forwarding the user's own password change / account closing to RailOps. Never logged. */
+        static final String RAILOPS_TOKEN_ATTRIBUTE = "railOpsAccessToken";
         private static final String BEARER = "Bearer ";
 
         static final String EMAIL_CONFLICT_MESSAGE = "This email already has a RailLens account that isn't linked to "
@@ -97,6 +99,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                 : List.of(new SimpleGrantedAuthority("ROLE_USER"));
                 SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(username, null, roles));
                 request.setAttribute(USERNAME_ATTRIBUTE, username);
+                request.setAttribute(RAILOPS_TOKEN_ATTRIBUTE, token);
         }
 
         /** RailLens' own tokens are HS256; RailOps' are RS256. Only the header is read here, never trusted. */

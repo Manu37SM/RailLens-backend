@@ -76,6 +76,9 @@ raillens.admin.legacy-key-enabled=true
 # When set, RailOps access tokens (RS256) are accepted alongside RailLens' own.
 raillens.railops.jwks-url=
 raillens.railops.issuer=
+# Phase 4D: where password changes and account closing for linked profiles are sent (RailOps identity service).
+# Blank = the issuer above, which is the identity service's own URL on Render.
+raillens.railops.api-url=
 
 # Comma-separated list of origins allowed to call /api/** from a browser.
 # Defaults to http://localhost:3000 if unset. Set this to your deployed
