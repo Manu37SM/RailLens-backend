@@ -1,5 +1,7 @@
 # RailLens Backend
 
+> **Going live?** Follow [`DEPLOYMENT.md`](DEPLOYMENT.md): one step-by-step guide for the backend, website, Android app and RailOps, with a tracker of what's merged vs. live.
+
 RailLens Backend is a Spring Boot REST API that powers the RailLens railway information system. Beyond core train/station/journey browsing, it exposes a full "Railway Intelligence" suite (train/station scoring, route comparison, network graph metrics, rankings, fun stats, achievements, dataset health), a hand-rolled JWT authentication system, and an admin panel — all designed as a stable REST contract for the Next.js web frontend today and for Android/iOS clients using the same API in the future.
 
 ## Tech Stack
