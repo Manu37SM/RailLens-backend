@@ -1,6 +1,6 @@
 # How to deploy RailLens and RailOps (all repos)
 
-**Last updated:** 13 Nov 2026, after Phase 4D (the switch to one login for the backend, website and Android app, behind settings that stay off until you flip them).
+**Last updated:** 13 Nov 2026, after Phase 5A (booking tickets on the RailLens website, off until you set one website setting).
 
 This guide is the same file in every repo: `train-db`, `train-db-frontend`, `train-db-mobile` and `railops`. Open whichever one you have. It is updated after every phase. The newest version is always the one in `train-db`.
 
@@ -45,8 +45,10 @@ Update this table whenever you merge or deploy. (I'll update it at the end of ev
 | Phase 4D: RailLens backend forwards password change / account closing for linked accounts to RailOps | `train-db` | ⏳ branch `security/phase4d-login-switch` (built on 4C) | ❌ no | RailOps 4D live. Optional setting `RAILLENS_RAILOPS_API_URL` (Section 6.1). No migration. |
 | Phase 4D: website can sign in through RailOps (**off until you set `NEXT_PUBLIC_RAILLENS_LOGIN_PROVIDER=railops`**) | `train-db-frontend` | ⏳ branch `security/phase4d-login-switch` (built on 2B) | ❌ no | merge and deploy any time (changes nothing while the setting is unset). Flip the setting only by the order in Section 9b. |
 | Phase 4D: Android app can sign in through RailOps (**off until you set `LOGIN_PROVIDER = 'railops'` in `src/config/login.ts` and build a new APK**) | `train-db-mobile` | ⏳ branch `security/phase4d-login-switch` (built on 2A: **merge 2A first**) | ❌ no | an APK built with the setting unchanged behaves exactly as before. Switch it only by Section 9b. |
+| Phase 5A: RailOps gets a public "find a train's run" lookup and a demo-only simulated payment passengers can finish | `railops` (reservation, payment, gateway) | n/a (in the zip) | ❌ never deployed | new reservation setting `RAILOPS_PAYMENTS_SIMULATED=true` (printed by `print-env.sh`) |
+| Phase 5A: **booking on the website** (train page → seats → passengers → pay (simulated) → ticket; my bookings; cancel) | `train-db-frontend` | ⏳ branch `feature/phase5a-booking` (built on 4D) | ❌ no | the 4D switch done, RailOps 5A live, then `NEXT_PUBLIC_RAILOPS_API_URL` (Section 7). Without it nothing shows. |
 
-**Merging the branches:** each branch contains the ones before it. In `train-db`, merge in this order: `security/phase2a-admin-mfa` → `security/phase2b-web-cookie` → `security/phase4b-railops-tokens` → `security/phase4c-account-move` → `security/phase4d-login-switch`. In `train-db-frontend`: 2A → 2B → `security/phase4d-login-switch`. In `train-db-mobile`: 2A → `security/phase4d-login-switch`.
+**Merging the branches:** each branch contains the ones before it. In `train-db`, merge in this order: `security/phase2a-admin-mfa` → `security/phase2b-web-cookie` → `security/phase4b-railops-tokens` → `security/phase4c-account-move` → `security/phase4d-login-switch`. In `train-db-frontend`: 2A → 2B → `security/phase4d-login-switch` → `feature/phase5a-booking`. In `train-db-mobile`: 2A → `security/phase4d-login-switch`.
 
 **How to see what's live right now**
 - **Backend:** Render → `raillens-train-db` → **Events**. The newest "Deploy live" line shows the commit. Compare it with `git log` in `train-db`.
@@ -181,6 +183,10 @@ Only after the backend is live (Section 6).
      - `RAILOPS_API_URL` = the RailOps gateway address, e.g. `https://railops-gateway.onrender.com`.
      - `RAILOPS_PROXY_SECRET` = **exactly** the gateway's `RAILOPS_EDGE_PROXY_SECRET` (in RailOps' `deploy/render/out/gateway.env`). Mark it *Sensitive*. Never with a `NEXT_PUBLIC_` name.
 
+   - **Phase 5A (only after the 4D switch, Section 9c):**
+     - `NEXT_PUBLIC_RAILOPS_API_URL` = the RailOps gateway address, e.g. `https://railops-gateway.onrender.com`. This turns booking on. It's public on purpose: the browser calls RailOps with it.
+     - Leave `NEXT_PUBLIC_RAILOPS_PAYMENT_HOSTS` unset. It's only for a real payment gateway later.
+
    Variables are read when the site is built. **After changing one, redeploy.**
 
    **What 2B changes (in plain words):** the website now signs people in through its own small server routes (`/api/auth/...`). Your long-lived sign-in token is kept in a cookie that page scripts can't read, instead of in the browser's `localStorage`. Vercel runs those routes for free as part of the same project; there's nothing extra to create.
@@ -266,6 +272,24 @@ Vercel → remove `NEXT_PUBLIC_RAILLENS_LOGIN_PROVIDER` (or set it to `raillens`
 
 After a rollback everyone signs in once more with the RailLens login. **Who can't:** people who registered after the switch, or changed their password after it (their password now lives only in RailOps). Tell them to wait, fix what made you roll back, and flip it on again. Their accounts are fine.
 
+## 9c. Booking on the website (Phase 5A)
+
+Only after the 4D switch has worked (Section 9b). Booking uses the RailOps sign-in, so it can't work before.
+
+1. **RailOps:** deploy the 5A version of **reservation**, **payment** and **gateway**. Run `deploy/render/print-env.sh reservation` and add the new `RAILOPS_PAYMENTS_SIMULATED=true` line on reservation in Render. Check `RAILLENS_WEB_ORIGIN` in RailOps' `render.env` is exactly the website address (`https://raillens.vercel.app`, no `/` at the end): the browser calls RailOps directly and the gateway only allows that site.
+2. **Open trains for booking** in the RailOps staff app (*Run operations → Open a train for booking*), for dates in the next few weeks: `railops/docs/runbooks/open-trains-for-booking.md`. Only those trains and dates can be booked; for others the website says "isn't open for booking on that date yet".
+3. **Website:** merge `feature/phase5a-booking`, add `NEXT_PUBLIC_RAILOPS_API_URL` (Section 7), redeploy.
+4. **Check** (private window, signed in):
+   - Open one of those trains → **Book this train** → a date you opened → **Check seats**: classes with numbers.
+   - **Book** → one passenger + your mobile → **Hold seats**. You land on the booking with a PNR, the fare and a 10-minute timer.
+   - **Pay (simulated)** → within a few seconds the status says **Booked** and the passenger shows a berth.
+   - Navbar → **Bookings**: it's listed. Open it → **Cancel booking…** shows the refund → **Yes, cancel** → *Cancelled*.
+   - Try **Try a failed payment** on a second booking: it stays *Waiting for payment*, and paying again works.
+
+**Money:** everything is simulated. No card is asked for and nothing is charged. The website says so next to every Pay button. Don't remove `RAILOPS_PAYMENTS_SIMULATED` unless a real payment gateway has been built and reviewed.
+
+**Rollback:** remove `NEXT_PUBLIC_RAILOPS_API_URL` on Vercel and redeploy: booking disappears from the website; bookings already made stay in RailOps.
+
 ## 10. Smoke test after every deploy (5 minutes)
 
 **Backend**
@@ -283,6 +307,7 @@ After a rollback everyone signs in once more with the RailLens login. **Who can'
   - **Local Storage** → `raillens-auth` shows only username, email and role, no token
   - **Cookies** → `__Secure-raillens_rt` is ticked **HttpOnly** and **Secure**
 - [ ] (Phase 2B+) Render logs must **not** show `Ignoring X-RailLens-Client-IP`
+- [ ] (After 5A) The booking checks in Section 9c step 4
 - [ ] (After the 4D switch) The checks in Section 9b step 6. In DevTools the cookie is now `__Secure-raillens_ro_rt` (HttpOnly, Secure)
 
 **Android app**
@@ -321,6 +346,9 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 | (4D) "This email already has a RailLens account that isn't linked" | That account wasn't moved. Run the account move again (Section 9b, step 3), then the person signs in again. |
 | (4D) Admin can't sign in | They need the one-time code ("Staff? Add your one-time code"). If they never set up an authenticator in RailOps, they do that in the RailOps staff app first. |
 | (4D) App: "Unable to reach the server" on sign-in, website works | `RAILOPS_BASE_URL` in `src/config/login.ts` is wrong, or the RailOps gateway is asleep (wait a minute and try again). |
+| (5A) Website: "Can't reach the booking service" or a CORS error in the browser console | RailOps' `RAILLENS_WEB_ORIGIN` isn't exactly the website address, or the gateway is asleep (wait a minute). Fix `render.env`, re-run `print-env.sh gateway`, update the gateway's setting. |
+| (5A) "This train isn't open for booking on that date yet" | Expected for trains and dates staff haven't opened. Open them in the RailOps staff app (Section 9c, step 2). |
+| (5A) Paid, but it stays "Waiting for payment" | RailOps' Kafka (Confluent) or payment service is down or asleep: the payment is recorded and the booking is confirmed once they're back (RailOps' sweeper also checks). Look at the payment and reservation logs on Render. |
 | (4D) Anything else after the switch | Roll back (Section 9b → Rollback), then send me the Vercel log lines for `/api/auth/login`. |
 | App update won't install | `versionCode` wasn't raised, or it was signed with a different key than last time. |
 
@@ -337,5 +365,6 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 | 13 Nov 2026 | Phase 4A in the tracker; new section 9b announcing the single-login plan and its one breaking step (4D). |
 | 13 Nov 2026 | Phase 4B: new branch and merge order, migration V8, two optional backend settings (leave unset until RailOps is live). |
 | 13 Nov 2026 | Phase 4C: account move (tracker, merge order, the three-step order in 9b). |
+| 13 Nov 2026 | Phase 5A: booking on the website (tracker, merge order, new Section 9c with order, checks and rollback, two website settings, one RailOps setting, three troubleshooting rows). |
 | 13 Nov 2026 | Phase 4D (Android app): tracker row, merge order, the app's switch steps and rollback in 9b, a check in Section 8, one troubleshooting row. |
 | 13 Nov 2026 | Phase 4D (backend + website): the switch-over order, checks and rollback in 9b; new website settings (Section 7); optional backend setting; RailOps gateway secret; five troubleshooting rows. |
