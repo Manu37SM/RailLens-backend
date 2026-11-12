@@ -1,6 +1,6 @@
 # How to deploy RailLens and RailOps (all repos)
 
-**Last updated:** 12 Nov 2026, after Phase 2B (website keeps the sign-in token in a secure cookie).
+**Last updated:** 12 Nov 2026, after Phase 3A (RailOps staff app restyled to look like RailLens).
 
 This guide is the same file in every repo: `train-db`, `train-db-frontend`, `train-db-mobile` and `railops`. Open whichever one you have. It is updated after every phase. The newest version is always the one in `train-db`.
 
@@ -35,7 +35,8 @@ Update this table whenever you merge or deploy. (I'll update it at the end of ev
 | Phase 2A: admin sign-in screens | `train-db-mobile` | ⏳ branch `security/phase2a-admin-mfa` | ❌ no | backend Phase 2A live first, then build a new APK |
 | Phase 2B: backend trusts the visitor IP sent by the website's server | `train-db` | ⏳ branch `security/phase2b-web-cookie` (built on 2A: **merge 2A first**) | ❌ no | env var `RAILLENS_CLIENT_IP_PROXY_SECRET` (Section 6) |
 | Phase 2B: website keeps the refresh token in a secure cookie | `train-db-frontend` | ⏳ branch `security/phase2b-web-cookie` (built on 2A: **merge 2A first**) | ❌ no | backend 2B live first; env var `RAILLENS_PROXY_SECRET` (Section 7) |
-| RailOps (whole system) | `railops` | n/a | ❌ never deployed | follow `railops/deploy/render/README.md` |
+| RailOps (whole system) | `railops` | n/a (no git yet) | ❌ never deployed | follow `railops/deploy/render/README.md` |
+| Phase 3A: RailOps web app restyled like RailLens (colours, Geist font, light/dark theme) | `railops` (`railops-web/`) | n/a (in the zip) | ❌ never deployed | nothing extra: it ships with the normal RailOps web deploy |
 
 **Merging the branches:** each 2B branch contains the 2A commits too. Merge `security/phase2a-admin-mfa` first, then `security/phase2b-web-cookie`, in each repo. The mobile app has no 2B changes.
 
@@ -198,6 +199,8 @@ Things to know first:
 - RailOps payments are **simulated**. Nobody can be charged real money. Keep it that way until a real payment provider is built and reviewed.
 - RailOps is separate from RailLens for now. Logging in to one does not log you in to the other until the "single login" phase is done. When it is, this guide will gain a section on the order to deploy both.
 - RailOps uses its **own** Neon project. Don't point it at the RailLens database.
+- Since Phase 3A the RailOps web app looks like RailLens (same colours, font and light/dark switch). There are no new settings to make.
+- **The `railops` folder has no git history yet.** Before you start merging RailOps changes, make it a repo: `cd railops`, `git init`, `git add .`, `git commit -m "RailOps baseline"`. Check first that `deploy/render/render.env`, `deploy/render/out/` and `deploy/secrets/` are listed in `.gitignore` (they are), so secrets never get committed.
 
 ---
 
@@ -260,3 +263,4 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 |---|---|
 | 12 Nov 2026 | First version: covers Phases 0, 1 and 2A, holding merges back from going live, the database check, and the Phase 2A admin setup. |
 | 12 Nov 2026 | Phase 2B: two matching proxy secrets (Render + Vercel), merge order 2A → 2B, cookie checks in the smoke test, three new troubleshooting rows. |
+| 12 Nov 2026 | Phase 3A: RailOps web restyle in the tracker (no new settings); note to put `railops` under git before merging. |
