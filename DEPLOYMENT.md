@@ -1,6 +1,6 @@
 # How to deploy RailLens and RailOps (all repos)
 
-**Last updated:** 13 Nov 2026, after Phase 4A (RailOps login usable by the RailLens app and website).
+**Last updated:** 13 Nov 2026, after Phase 4B (RailLens backend can accept RailOps logins).
 
 This guide is the same file in every repo: `train-db`, `train-db-frontend`, `train-db-mobile` and `railops`. Open whichever one you have. It is updated after every phase. The newest version is always the one in `train-db`.
 
@@ -39,8 +39,9 @@ Update this table whenever you merge or deploy. (I'll update it at the end of ev
 | Phase 3A: RailOps web app restyled like RailLens (colours, Geist font, light/dark theme) | `railops` (`railops-web/`) | n/a (in the zip) | ❌ never deployed | nothing extra: it ships with the normal RailOps web deploy |
 | Phase 3B: RailOps opens trains for booking from RailLens timetables; gateway reads the real visitor IP on Render; gateway allows the RailLens website (CORS) | `railops` | n/a (in the zip) | ❌ never deployed | **RailLens backend live first**; settings `RAILLENS_API_URL` / `RAILLENS_WEB_ORIGIN` in RailOps' `render.env` (pre-filled) |
 | Phase 4A: RailOps login gets "app sessions" (for the RailLens Android app and website server) and puts the email in its tokens | `railops` (identity service, gateway) | n/a (in the zip) | ❌ never deployed | nothing extra: no new settings; nothing uses it yet |
+| Phase 4B: RailLens backend can also accept RailOps logins (DB migration **V8**) | `train-db` | ⏳ branch `security/phase4b-railops-tokens` (built on 2B: **merge 2A, then 2B, then 4B**) | ❌ no | nothing until RailOps is live. Then two optional settings (Section 6.1). V8 runs by itself and is safe to roll back. |
 
-**Merging the branches:** each 2B branch contains the 2A commits too. Merge `security/phase2a-admin-mfa` first, then `security/phase2b-web-cookie`, in each repo. The mobile app has no 2B changes.
+**Merging the branches:** each branch contains the ones before it. In `train-db`, merge in this order: `security/phase2a-admin-mfa` → `security/phase2b-web-cookie` → `security/phase4b-railops-tokens`. In `train-db-frontend`: 2A → 2B. The mobile app has only 2A.
 
 **How to see what's live right now**
 - **Backend:** Render → `raillens-train-db` → **Events**. The newest "Deploy live" line shows the commit. Compare it with `git log` in `train-db`.
@@ -135,6 +136,8 @@ Render → `raillens-train-db` → **Environment**. `render.yaml` lists them too
 | `RAILLENS_ADMIN_BOOTSTRAP_USERNAMES` | your own RailLens username (it must already be registered) | no | **Phase 2A** |
 | `RAILLENS_ADMIN_LEGACY_KEY_ENABLED` | leave unset (means `true`). Set `false` only in Section 11 | no | **Phase 2A** |
 | `RAILLENS_CLIENT_IP_PROXY_SECRET` | `openssl rand -base64 32`. **The same value** goes into Vercel as `RAILLENS_PROXY_SECRET` (Section 7) | **yes** | **Phase 2B** |
+| `RAILLENS_RAILOPS_JWKS_URL` | **Leave unset until RailOps is live.** Then: RailOps identity URL + `/.well-known/jwks.json` (e.g. `https://railops-identity.onrender.com/.well-known/jwks.json`) | no | **Phase 4B** |
+| `RAILLENS_RAILOPS_ISSUER` | Set together with the line above: exactly RailOps' `JWT_ISSUER` (on Render, the identity service's URL, e.g. `https://railops-identity.onrender.com`) | no | **Phase 4B** |
 
 `openssl` comes with **Git Bash** on Windows.
 
@@ -277,3 +280,4 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 | 12 Nov 2026 | Phase 3A: RailOps web restyle in the tracker (no new settings); note to put `railops` under git before merging. |
 | 12 Nov 2026 | Phase 3B: RailOps needs the RailLens backend live first; how to open trains for booking; two new RailOps settings. |
 | 13 Nov 2026 | Phase 4A in the tracker; new section 9b announcing the single-login plan and its one breaking step (4D). |
+| 13 Nov 2026 | Phase 4B: new branch and merge order, migration V8, two optional backend settings (leave unset until RailOps is live). |
