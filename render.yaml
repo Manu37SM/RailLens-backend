@@ -38,4 +38,9 @@ services:
       # RAILLENS_PROXY_SECRET in Vercel. `openssl rand -base64 32`.
       - key: RAILLENS_CLIENT_IP_PROXY_SECRET
         sync: false
+      # Single login with RailOps (Phase 4B). Leave unset until RailOps is live; see DEPLOYMENT.md.
+      - key: RAILLENS_RAILOPS_JWKS_URL
+        sync: false
+      - key: RAILLENS_RAILOPS_ISSUER
+        sync: false
 

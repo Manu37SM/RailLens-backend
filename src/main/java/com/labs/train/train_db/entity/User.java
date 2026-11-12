@@ -31,8 +31,12 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
 
-    @Column(nullable = false)
+    /** Null for a profile created from a RailOps login (Phase 4B): that person signs in at RailOps. */
     private String passwordHash;
+
+    /** The RailOps account this profile belongs to (single login, Phase 4B). Unique; null until linked. */
+    @Column(unique = true)
+    private java.util.UUID railopsUserId;
 
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();

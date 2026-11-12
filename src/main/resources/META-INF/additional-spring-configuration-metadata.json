@@ -87,6 +87,18 @@
       "type": "java.lang.String",
       "defaultValue": "",
       "description": "Shared secret (32+ characters) that lets the RailLens website's own server pass the visitor's IP in X-RailLens-Client-IP (it signs people in on their behalf, Phase 2B). Must equal RAILLENS_PROXY_SECRET on Vercel. Blank: the header is ignored."
+    },
+    {
+      "name": "raillens.railops.jwks-url",
+      "type": "java.lang.String",
+      "defaultValue": "",
+      "description": "RailOps login's public keys (e.g. https://railops-identity.onrender.com/.well-known/jwks.json). When set, RailOps access tokens are accepted alongside RailLens' own (single login, Phase 4B). Blank: off."
+    },
+    {
+      "name": "raillens.railops.issuer",
+      "type": "java.lang.String",
+      "defaultValue": "",
+      "description": "Exact issuer RailOps puts in its tokens (its JWT_ISSUER, on Render the identity service's URL). Required when raillens.railops.jwks-url is set."
     }
   ]
 }

@@ -20,6 +20,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByEmail(String email);
 
+    boolean existsByEmailIgnoreCase(String email);
+
+    Optional<User> findByRailopsUserId(java.util.UUID railopsUserId);
+
     Optional<User> findByUsernameOrEmail(String username, String email);
 
     /**

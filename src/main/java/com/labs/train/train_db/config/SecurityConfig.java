@@ -17,6 +17,8 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import com.labs.train.train_db.security.RailOpsAccountLinker;
+import com.labs.train.train_db.security.RailOpsTokenVerifier;
 import com.labs.train.train_db.service.JwtService;
 
 /**
@@ -53,9 +55,10 @@ public class SecurityConfig {
 
         @Bean
         SecurityFilterChain api(HttpSecurity http, JwtService jwtService, JsonAuthErrorHandler errors,
+                        RailOpsTokenVerifier railOps, RailOpsAccountLinker railOpsAccounts,
                         @Value("${raillens.admin.api-key:}") String adminKey,
                         @Value("${raillens.admin.legacy-key-enabled:true}") boolean legacyAdminKey) throws Exception {
-                var jwt = new JwtAuthenticationFilter(jwtService);
+                var jwt = new JwtAuthenticationFilter(jwtService, railOps, railOpsAccounts);
                 var admin = new AdminKeyAuthenticationFilter(errors, adminKey, legacyAdminKey);
                 http
                                 .csrf(AbstractHttpConfigurer::disable)          // no cookies: bearer tokens only (until Phase 2)
