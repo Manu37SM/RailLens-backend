@@ -1,6 +1,6 @@
 # How to deploy RailLens and RailOps (all repos)
 
-**Last updated:** 12 Nov 2026, after Phase 3B (RailOps reads train timetables from RailLens).
+**Last updated:** 13 Nov 2026, after Phase 4A (RailOps login usable by the RailLens app and website).
 
 This guide is the same file in every repo: `train-db`, `train-db-frontend`, `train-db-mobile` and `railops`. Open whichever one you have. It is updated after every phase. The newest version is always the one in `train-db`.
 
@@ -38,6 +38,7 @@ Update this table whenever you merge or deploy. (I'll update it at the end of ev
 | RailOps (whole system) | `railops` | n/a (no git yet) | ❌ never deployed | follow `railops/deploy/render/README.md` |
 | Phase 3A: RailOps web app restyled like RailLens (colours, Geist font, light/dark theme) | `railops` (`railops-web/`) | n/a (in the zip) | ❌ never deployed | nothing extra: it ships with the normal RailOps web deploy |
 | Phase 3B: RailOps opens trains for booking from RailLens timetables; gateway reads the real visitor IP on Render; gateway allows the RailLens website (CORS) | `railops` | n/a (in the zip) | ❌ never deployed | **RailLens backend live first**; settings `RAILLENS_API_URL` / `RAILLENS_WEB_ORIGIN` in RailOps' `render.env` (pre-filled) |
+| Phase 4A: RailOps login gets "app sessions" (for the RailLens Android app and website server) and puts the email in its tokens | `railops` (identity service, gateway) | n/a (in the zip) | ❌ never deployed | nothing extra: no new settings; nothing uses it yet |
 
 **Merging the branches:** each 2B branch contains the 2A commits too. Merge `security/phase2a-admin-mfa` first, then `security/phase2b-web-cookie`, in each repo. The mobile app has no 2B changes.
 
@@ -210,6 +211,10 @@ Things to know first:
 
 ---
 
+## 9b. Coming next: one login for both apps
+
+RailLens is moving to RailOps' login, so one account books tickets and uses RailLens. The plan, step by step, is in `railops/docs/single-login-plan.md`. Steps 4A to 4C change nothing users can see. **Step 4D is the one switch-over**: everyone starts signing in through RailOps, and people keep their passwords. When 4D is ready, this guide will get an exact order and a rollback for it. Until then there is nothing to do.
+
 ## 10. Smoke test after every deploy (5 minutes)
 
 **Backend**
@@ -271,3 +276,4 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 | 12 Nov 2026 | Phase 2B: two matching proxy secrets (Render + Vercel), merge order 2A → 2B, cookie checks in the smoke test, three new troubleshooting rows. |
 | 12 Nov 2026 | Phase 3A: RailOps web restyle in the tracker (no new settings); note to put `railops` under git before merging. |
 | 12 Nov 2026 | Phase 3B: RailOps needs the RailLens backend live first; how to open trains for booking; two new RailOps settings. |
+| 13 Nov 2026 | Phase 4A in the tracker; new section 9b announcing the single-login plan and its one breaking step (4D). |
