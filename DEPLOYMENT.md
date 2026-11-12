@@ -1,6 +1,6 @@
 # How to deploy RailLens and RailOps (all repos)
 
-**Last updated:** 13 Nov 2026, after Phase 5A (booking tickets on the RailLens website, off until you set one website setting).
+**Last updated:** 13 Nov 2026, after Phase 5B (booking in the Android app too; website and app each off until you switch them on).
 
 This guide is the same file in every repo: `train-db`, `train-db-frontend`, `train-db-mobile` and `railops`. Open whichever one you have. It is updated after every phase. The newest version is always the one in `train-db`.
 
@@ -47,8 +47,9 @@ Update this table whenever you merge or deploy. (I'll update it at the end of ev
 | Phase 4D: Android app can sign in through RailOps (**off until you set `LOGIN_PROVIDER = 'railops'` in `src/config/login.ts` and build a new APK**) | `train-db-mobile` | ⏳ branch `security/phase4d-login-switch` (built on 2A: **merge 2A first**) | ❌ no | an APK built with the setting unchanged behaves exactly as before. Switch it only by Section 9b. |
 | Phase 5A: RailOps gets a public "find a train's run" lookup and a demo-only simulated payment passengers can finish | `railops` (reservation, payment, gateway) | n/a (in the zip) | ❌ never deployed | new reservation setting `RAILOPS_PAYMENTS_SIMULATED=true` (printed by `print-env.sh`) |
 | Phase 5A: **booking on the website** (train page → seats → passengers → pay (simulated) → ticket; my bookings; cancel) | `train-db-frontend` | ⏳ branch `feature/phase5a-booking` (built on 4D) | ❌ no | the 4D switch done, RailOps 5A live, then `NEXT_PUBLIC_RAILOPS_API_URL` (Section 7). Without it nothing shows. |
+| Phase 5B: **booking in the Android app** (same flow; also: bookings and profile no longer kept in the offline cache, and a slow server no longer signs you out) | `train-db-mobile` | ⏳ branch `feature/phase5b-booking` (built on 4D) | ❌ no | an APK with `BOOKING_ENABLED = false` (the default) shows no booking. Switch on by Section 9c. |
 
-**Merging the branches:** each branch contains the ones before it. In `train-db`, merge in this order: `security/phase2a-admin-mfa` → `security/phase2b-web-cookie` → `security/phase4b-railops-tokens` → `security/phase4c-account-move` → `security/phase4d-login-switch`. In `train-db-frontend`: 2A → 2B → `security/phase4d-login-switch` → `feature/phase5a-booking`. In `train-db-mobile`: 2A → `security/phase4d-login-switch`.
+**Merging the branches:** each branch contains the ones before it. In `train-db`, merge in this order: `security/phase2a-admin-mfa` → `security/phase2b-web-cookie` → `security/phase4b-railops-tokens` → `security/phase4c-account-move` → `security/phase4d-login-switch`. In `train-db-frontend`: 2A → 2B → `security/phase4d-login-switch` → `feature/phase5a-booking`. In `train-db-mobile`: 2A → `security/phase4d-login-switch` → `feature/phase5b-booking`.
 
 **How to see what's live right now**
 - **Backend:** Render → `raillens-train-db` → **Events**. The newest "Deploy live" line shows the commit. Compare it with `git log` in `train-db`.
@@ -201,7 +202,7 @@ Only after the backend is live (Section 6).
 Only after the backend is live. "Deploying" the app means building a new APK and sharing it.
 
 1. Check `src/config/env.ts`: `LIVE_BASE_URL` must be `https://raillens-train-db.onrender.com/api/v1`, and `USE_LOCAL_BACKEND` must be `false`.
-   Check `src/config/login.ts` (Phase 4D): `LOGIN_PROVIDER` is `'raillens'` until you do the app switch in Section 9b. `RAILOPS_BASE_URL` must be your RailOps gateway address (pre-filled `https://railops-gateway.onrender.com`).
+   Check `src/config/login.ts` (Phase 4D): `LOGIN_PROVIDER` is `'raillens'` until you do the app switch in Section 9b, and `BOOKING_ENABLED` is `false` until Section 9c. `RAILOPS_BASE_URL` must be your RailOps gateway address (pre-filled `https://railops-gateway.onrender.com`).
 2. In `android/app/build.gradle`, raise `versionCode` by 1 (for example `1` → `2`) and set `versionName` (for example `"1.1"`). Phones refuse an "update" with the same `versionCode`.
 3. Make sure `android/keystore.properties` and your `release.keystore` exist on this computer. They are not in git, so keep backups. Without them the APK is signed with the public debug key, and antivirus apps flag it.
 4. Build it in PowerShell:
@@ -286,6 +287,13 @@ Only after the 4D switch has worked (Section 9b). Booking uses the RailOps sign-
    - Navbar → **Bookings**: it's listed. Open it → **Cancel booking…** shows the refund → **Yes, cancel** → *Cancelled*.
    - Try **Try a failed payment** on a second booking: it stays *Waiting for payment*, and paying again works.
 
+**The Android app (Phase 5B)**, once the website's booking works and the app already uses the RailOps login (9b):
+1. Merge `feature/phase5b-booking` in `train-db-mobile`.
+2. In `src/config/login.ts` set `BOOKING_ENABLED = true` (leave `RAILOPS_PAYMENT_HOSTS` empty).
+3. Build and share a new APK (Section 8, raise `versionCode`).
+4. On your phone: a train you opened → **Book this train** → a date → **Check seats** → **Book** → passenger + mobile → **Hold seats** → **Pay (simulated)** → *Booked*. **Account → My bookings** lists it; cancel works. Bookings made on the website show up in the app and the other way round (same RailOps account).
+5. Rollback: `BOOKING_ENABLED = false`, new APK (raise `versionCode` again).
+
 **Money:** everything is simulated. No card is asked for and nothing is charged. The website says so next to every Pay button. Don't remove `RAILOPS_PAYMENTS_SIMULATED` unless a real payment gateway has been built and reviewed.
 
 **Rollback:** remove `NEXT_PUBLIC_RAILOPS_API_URL` on Vercel and redeploy: booking disappears from the website; bookings already made stay in RailOps.
@@ -365,6 +373,7 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 | 13 Nov 2026 | Phase 4A in the tracker; new section 9b announcing the single-login plan and its one breaking step (4D). |
 | 13 Nov 2026 | Phase 4B: new branch and merge order, migration V8, two optional backend settings (leave unset until RailOps is live). |
 | 13 Nov 2026 | Phase 4C: account move (tracker, merge order, the three-step order in 9b). |
+| 13 Nov 2026 | Phase 5B: booking in the Android app (tracker, merge order, app steps in 9c, Section 8 check). |
 | 13 Nov 2026 | Phase 5A: booking on the website (tracker, merge order, new Section 9c with order, checks and rollback, two website settings, one RailOps setting, three troubleshooting rows). |
 | 13 Nov 2026 | Phase 4D (Android app): tracker row, merge order, the app's switch steps and rollback in 9b, a check in Section 8, one troubleshooting row. |
 | 13 Nov 2026 | Phase 4D (backend + website): the switch-over order, checks and rollback in 9b; new website settings (Section 7); optional backend setting; RailOps gateway secret; five troubleshooting rows. |
