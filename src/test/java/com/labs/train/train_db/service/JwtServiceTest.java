@@ -16,7 +16,45 @@ class JwtServiceTest {
                 jwtService = new JwtService();
                 ReflectionTestUtils.setField(jwtService, "configuredSecret", "a-test-secret-that-is-at-least-32-bytes-long");
                 ReflectionTestUtils.setField(jwtService, "expirationMinutes", 60L);
+                ReflectionTestUtils.setField(jwtService, "adminExpirationMinutes", 15L);
+                ReflectionTestUtils.setField(jwtService, "enrolmentTokenMinutes", 5L);
                 ReflectionTestUtils.invokeMethod(jwtService, "init");
+        }
+
+        private static com.labs.train.train_db.entity.User admin() {
+                var user = new com.labs.train.train_db.entity.User();
+                user.setUsername("ops");
+                user.setRole(com.labs.train.train_db.entity.User.ROLE_ADMIN);
+                return user;
+        }
+
+        @Test
+        void anAdminTokenGrantsAdminOnlyWhenTheSessionPassedMfa() {
+                assertThat(jwtService.parseAccessToken(jwtService.generateToken(admin(), true)).admin()).isTrue();
+                assertThat(jwtService.parseAccessToken(jwtService.generateToken(admin(), false)).admin()).isFalse();
+                assertThat(jwtService.getExpirationSeconds(admin(), true)).isEqualTo(15 * 60);
+        }
+
+        @Test
+        void aRoleClaimWithoutTheMfaClaimDoesNotGrantAdmin() {
+                // Defence in depth: only generateToken(user, true) writes both claims, but the filter must not trust
+                // a role claim alone (e.g. from a future code path that forgets MFA).
+                var key = io.jsonwebtoken.security.Keys.hmacShaKeyFor(
+                                "a-test-secret-that-is-at-least-32-bytes-long".getBytes());
+                String roleOnly = io.jsonwebtoken.Jwts.builder().subject("ops").claim("role", "ADMIN")
+                                .expiration(new java.util.Date(System.currentTimeMillis() + 60_000)).signWith(key).compact();
+                var claims = jwtService.parseAccessToken(roleOnly);
+                assertThat(claims.username()).isEqualTo("ops");
+                assertThat(claims.admin()).isFalse();
+        }
+
+        @Test
+        void anEnrolmentTokenIsNotAnAccessTokenAndViceVersa() {
+                String enrolment = jwtService.generateEnrolmentToken("ops");
+                assertThat(jwtService.validateEnrolmentToken(enrolment)).isEqualTo("ops");
+                assertThat(jwtService.parseAccessToken(enrolment)).isNull();
+                assertThat(jwtService.validateAndGetUsername(enrolment)).isNull();
+                assertThat(jwtService.validateEnrolmentToken(jwtService.generateToken("ops"))).isNull();
         }
 
         @Test

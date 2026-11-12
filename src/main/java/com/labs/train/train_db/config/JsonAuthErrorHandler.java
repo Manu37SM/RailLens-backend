@@ -3,6 +3,7 @@ package com.labs.train.train_db.config;
 import java.io.IOException;
 import java.time.LocalDateTime;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
@@ -23,6 +24,15 @@ public class JsonAuthErrorHandler implements AuthenticationEntryPoint, AccessDen
 
         static final String REASON_ATTRIBUTE = JsonAuthErrorHandler.class.getName() + ".reason";
 
+        /** While the shared key is still accepted, admin-route errors keep the message the current clients show. */
+        private final String adminCredentialMessage;
+
+        public JsonAuthErrorHandler(@Value("${raillens.admin.legacy-key-enabled:true}") boolean legacyKeyEnabled) {
+                this.adminCredentialMessage = legacyKeyEnabled
+                                ? "Missing or invalid " + AdminKeyAuthenticationFilter.HEADER + " header"
+                                : "Admin sign-in required";
+        }
+
         @Override
         public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException ex)
                         throws IOException {
@@ -35,19 +45,19 @@ public class JsonAuthErrorHandler implements AuthenticationEntryPoint, AccessDen
                 // Authenticated but not allowed, e.g. a user token on an admin route, or an unlisted (denyAll) route.
                 boolean signedIn = request.getAttribute(JwtAuthenticationFilter.USERNAME_ATTRIBUTE) != null;
                 if (signedIn && isAdminRoute(request)) {
-                        write(response, HttpStatus.UNAUTHORIZED, "Missing or invalid " + AdminKeyAuthenticationFilter.HEADER + " header");
+                        write(response, HttpStatus.UNAUTHORIZED, adminCredentialMessage);
                         return;
                 }
                 write(response, HttpStatus.FORBIDDEN, "Access denied");
         }
 
-        private static String unauthenticatedMessage(HttpServletRequest request) {
+        private String unauthenticatedMessage(HttpServletRequest request) {
                 Object reason = request.getAttribute(REASON_ATTRIBUTE);
                 if (reason != null) {
                         return reason.toString();
                 }
                 if (isAdminRoute(request)) {
-                        return "Missing or invalid " + AdminKeyAuthenticationFilter.HEADER + " header";
+                        return adminCredentialMessage;
                 }
                 String path = request.getRequestURI().substring(request.getContextPath().length());
                 if (path.startsWith("/api/v1/auth/")) {

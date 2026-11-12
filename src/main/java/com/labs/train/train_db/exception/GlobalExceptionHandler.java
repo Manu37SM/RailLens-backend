@@ -63,6 +63,18 @@ public class GlobalExceptionHandler {
                                 .body(response);
         }
 
+        @ExceptionHandler(AuthFlowException.class)
+        public ResponseEntity<ApiErrorResponse> handleAuthFlow(AuthFlowException ex) {
+
+                ApiErrorResponse response = new ApiErrorResponse(
+                                LocalDateTime.now(),
+                                ex.getStatus().value(),
+                                ex.getMessage(),
+                                ex.getCode());
+
+                return ResponseEntity.status(ex.getStatus()).body(response);
+        }
+
         @ExceptionHandler(AccountLockedException.class)
         public ResponseEntity<ApiErrorResponse> handleAccountLocked(
                         AccountLockedException ex) {

@@ -28,7 +28,8 @@ import com.labs.train.train_db.service.JwtService;
  * <p>Credentials are unchanged for clients:
  * <ul>
  *   <li>{@code Authorization: Bearer <jwt>} from /api/v1/auth/login|register|refresh grants ROLE_USER.</li>
- *   <li>{@code X-Admin-Key} grants ROLE_ADMIN (until Phase 2 replaces the shared key with admin accounts + MFA).</li>
+ *   <li>An admin account's bearer token, issued after password + one-time code, also grants ROLE_ADMIN.</li>
+ *   <li>LEGACY: {@code X-Admin-Key} grants ROLE_ADMIN while {@code raillens.admin.legacy-key-enabled=true}.</li>
  * </ul>
  * Error bodies keep the existing {timestamp,status,error} shape the web and mobile clients parse.
  */
@@ -42,7 +43,9 @@ public class SecurityConfig {
 
         /** You can't hold a credential before registering or logging in. */
         static final String[] PUBLIC_AUTH = {
-                        "/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout"};
+                        "/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout",
+                        // carry their own short-lived enrolment token in the body (admin password already checked)
+                        "/api/v1/auth/mfa/enrol", "/api/v1/auth/mfa/confirm"};
 
         /** Catalogue writes and operations. */
         static final String[] ADMIN_ONLY = {
@@ -50,9 +53,10 @@ public class SecurityConfig {
 
         @Bean
         SecurityFilterChain api(HttpSecurity http, JwtService jwtService, JsonAuthErrorHandler errors,
-                        @Value("${raillens.admin.api-key:}") String adminKey) throws Exception {
+                        @Value("${raillens.admin.api-key:}") String adminKey,
+                        @Value("${raillens.admin.legacy-key-enabled:true}") boolean legacyAdminKey) throws Exception {
                 var jwt = new JwtAuthenticationFilter(jwtService);
-                var admin = new AdminKeyAuthenticationFilter(errors, adminKey);
+                var admin = new AdminKeyAuthenticationFilter(errors, adminKey, legacyAdminKey);
                 http
                                 .csrf(AbstractHttpConfigurer::disable)          // no cookies: bearer tokens only (until Phase 2)
                                 .httpBasic(AbstractHttpConfigurer::disable)

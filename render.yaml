@@ -22,6 +22,12 @@ services:
         generateValue: true
       - key: RAILLENS_ADMIN_API_KEY
         generateValue: true
+      # Admin accounts + MFA (README "Authentication"). Set in the dashboard: `openssl rand -base64 32`, and keep a
+      # copy in your password manager: if it is lost or changed, every admin must re-enrol their authenticator.
+      - key: RAILLENS_MFA_ENCRYPTION_KEY
+        sync: false
+      - key: RAILLENS_ADMIN_BOOTSTRAP_USERNAMES
+        sync: false
       - key: RAILLENS_CORS_ALLOWED_ORIGINS
         sync: false
       # Render's proxy appends to X-Forwarded-For (it doesn't replace it), so the leftmost entry is client-controlled.

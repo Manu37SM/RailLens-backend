@@ -35,7 +35,9 @@ class EndpointAuthorizationTest {
                         "POST /api/v1/auth/register",
                         "POST /api/v1/auth/login",
                         "POST /api/v1/auth/refresh",
-                        "POST /api/v1/auth/logout");
+                        "POST /api/v1/auth/logout",
+                        "POST /api/v1/auth/mfa/enrol",
+                        "POST /api/v1/auth/mfa/confirm");
 
         private static final Set<RequestMethod> READS = Set.of(RequestMethod.GET, RequestMethod.HEAD, RequestMethod.OPTIONS);
 

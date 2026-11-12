@@ -15,6 +15,9 @@ import com.labs.train.train_db.model.ChangePasswordRequest;
 import com.labs.train.train_db.model.CurrentUserResponse;
 import com.labs.train.train_db.model.DeleteAccountRequest;
 import com.labs.train.train_db.model.LoginRequest;
+import com.labs.train.train_db.model.MfaConfirmRequest;
+import com.labs.train.train_db.model.MfaEnrolRequest;
+import com.labs.train.train_db.model.MfaEnrolmentResponse;
 import com.labs.train.train_db.model.RefreshRequest;
 import com.labs.train.train_db.model.RegisterRequest;
 import com.labs.train.train_db.service.AuthService;
@@ -37,6 +40,18 @@ public class AuthController {
         @PostMapping("/login")
         public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
                 return ResponseEntity.ok(authService.login(request));
+        }
+
+        /** Admin MFA setup, step 1: secret + otpauth URI for the authenticator app. */
+        @PostMapping("/mfa/enrol")
+        public ResponseEntity<MfaEnrolmentResponse> startMfaEnrolment(@Valid @RequestBody MfaEnrolRequest request) {
+                return ResponseEntity.ok(authService.startMfaEnrolment(request.enrolmentToken()));
+        }
+
+        /** Step 2: first code from the app; enables MFA and returns an admin session. */
+        @PostMapping("/mfa/confirm")
+        public ResponseEntity<AuthResponse> confirmMfaEnrolment(@Valid @RequestBody MfaConfirmRequest request) {
+                return ResponseEntity.ok(authService.confirmMfaEnrolment(request.enrolmentToken(), request.otp()));
         }
 
         @PostMapping("/refresh")

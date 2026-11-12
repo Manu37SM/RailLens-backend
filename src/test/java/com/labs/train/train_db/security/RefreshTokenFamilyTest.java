@@ -52,6 +52,20 @@ class RefreshTokenFamilyTest {
         }
 
         @Test
+        void anMfaSessionKeepsItsLoginTimeExpiryAcrossRotations() {
+                User user = newUser();
+                String first = tokens.issue(user, true);
+                LocalDateTime expiry = jdbc.sql("SELECT expires_at FROM refresh_tokens WHERE user_id = :u")
+                                .param("u", user.getId()).query(LocalDateTime.class).single();
+                assertThat(expiry).isBetween(LocalDateTime.now().plusHours(11), LocalDateTime.now().plusHours(13));
+
+                var rotated = tokens.rotate(first);
+                assertThat(rotated.mfa()).isTrue();
+                assertThat(jdbc.sql("SELECT expires_at FROM refresh_tokens WHERE user_id = :u AND NOT revoked")
+                                .param("u", user.getId()).query(LocalDateTime.class).single()).isEqualTo(expiry);
+        }
+
+        @Test
         void aReplayedRotatedTokenRevokesTheFamilyAndTheRevocationCommits() {
                 User user = newUser();
                 String original = tokens.issue(user);

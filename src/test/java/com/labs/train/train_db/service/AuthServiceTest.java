@@ -3,6 +3,7 @@ package com.labs.train.train_db.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -41,6 +42,9 @@ class AuthServiceTest {
 
         @Mock
         private RefreshTokenService refreshTokenService;
+
+        @Mock
+        private com.labs.train.train_db.security.MfaSecretCipher mfaSecretCipher;
 
         @InjectMocks
         private AuthService authService;
@@ -84,9 +88,9 @@ class AuthServiceTest {
                 when(userRepository.existsByUsername("manish")).thenReturn(false);
                 when(userRepository.existsByEmail("manish@example.com")).thenReturn(false);
                 when(passwordEncoder.encode("password1")).thenReturn("hashed-value");
-                when(jwtService.generateToken("manish")).thenReturn("signed-jwt");
-                when(jwtService.getExpirationSeconds()).thenReturn(3600L);
-                when(refreshTokenService.issue(any())).thenReturn("refresh-token-value");
+                when(jwtService.generateToken(any(User.class), eq(false))).thenReturn("signed-jwt");
+                when(jwtService.getExpirationSeconds(any(User.class), eq(false))).thenReturn(3600L);
+                when(refreshTokenService.issue(any(User.class), eq(false))).thenReturn("refresh-token-value");
 
                 AuthResponse response = authService.register(request);
 
@@ -133,9 +137,9 @@ class AuthServiceTest {
                 LoginRequest request = new LoginRequest("manish", "password1");
                 when(userRepository.findByUsernameOrEmail("manish", "manish")).thenReturn(Optional.of(user));
                 when(passwordEncoder.matches("password1", "hashed-value")).thenReturn(true);
-                when(jwtService.generateToken("manish")).thenReturn("signed-jwt");
-                when(jwtService.getExpirationSeconds()).thenReturn(3600L);
-                when(refreshTokenService.issue(any())).thenReturn("refresh-token-value");
+                when(jwtService.generateToken(any(User.class), eq(false))).thenReturn("signed-jwt");
+                when(jwtService.getExpirationSeconds(any(User.class), eq(false))).thenReturn(3600L);
+                when(refreshTokenService.issue(any(User.class), eq(false))).thenReturn("refresh-token-value");
 
                 AuthResponse response = authService.login(request);
 
@@ -164,9 +168,9 @@ class AuthServiceTest {
                 user.setEmail("manish@example.com");
 
                 when(refreshTokenService.rotate("old-refresh-token"))
-                                .thenReturn(new RefreshTokenService.RotatedToken(user, "new-refresh-token"));
-                when(jwtService.generateToken("manish")).thenReturn("new-access-token");
-                when(jwtService.getExpirationSeconds()).thenReturn(3600L);
+                                .thenReturn(new RefreshTokenService.RotatedToken(user, "new-refresh-token", false));
+                when(jwtService.generateToken(any(User.class), eq(false))).thenReturn("new-access-token");
+                when(jwtService.getExpirationSeconds(any(User.class), eq(false))).thenReturn(3600L);
 
                 AuthResponse response = authService.refresh("old-refresh-token");
 
@@ -255,9 +259,9 @@ class AuthServiceTest {
                 LoginRequest request = new LoginRequest("manish", "password1");
                 when(userRepository.findByUsernameOrEmail("manish", "manish")).thenReturn(Optional.of(user));
                 when(passwordEncoder.matches("password1", "hashed-value")).thenReturn(true);
-                when(jwtService.generateToken("manish")).thenReturn("signed-jwt");
-                when(jwtService.getExpirationSeconds()).thenReturn(3600L);
-                when(refreshTokenService.issue(any())).thenReturn("refresh-token-value");
+                when(jwtService.generateToken(any(User.class), eq(false))).thenReturn("signed-jwt");
+                when(jwtService.getExpirationSeconds(any(User.class), eq(false))).thenReturn(3600L);
+                when(refreshTokenService.issue(any(User.class), eq(false))).thenReturn("refresh-token-value");
 
                 AuthResponse response = authService.login(request);
 
@@ -277,9 +281,9 @@ class AuthServiceTest {
                 LoginRequest request = new LoginRequest("manish", "password1");
                 when(userRepository.findByUsernameOrEmail("manish", "manish")).thenReturn(Optional.of(user));
                 when(passwordEncoder.matches("password1", "hashed-value")).thenReturn(true);
-                when(jwtService.generateToken("manish")).thenReturn("signed-jwt");
-                when(jwtService.getExpirationSeconds()).thenReturn(3600L);
-                when(refreshTokenService.issue(any())).thenReturn("refresh-token-value");
+                when(jwtService.generateToken(any(User.class), eq(false))).thenReturn("signed-jwt");
+                when(jwtService.getExpirationSeconds(any(User.class), eq(false))).thenReturn(3600L);
+                when(refreshTokenService.issue(any(User.class), eq(false))).thenReturn("refresh-token-value");
 
                 authService.login(request);
 
