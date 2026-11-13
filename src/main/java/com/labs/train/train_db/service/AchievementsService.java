@@ -42,7 +42,7 @@ public class AchievementsService {
         private final RailwayNetworkService railwayNetworkService;
         private final ScheduleSnapshotService scheduleSnapshotService;
 
-        @Cacheable(cacheNames = CacheConfig.ACHIEVEMENTS_CACHE)
+        @Cacheable(cacheNames = CacheConfig.ACHIEVEMENTS_CACHE, sync = true)
         public AchievementsResponse getAchievements() {
 
                 List<RouteDistanceProjection> longestRoutes = trainScheduleRepository

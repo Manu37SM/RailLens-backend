@@ -33,7 +33,7 @@ public class RankingsService {
         private final RailwayNetworkService railwayNetworkService;
         private final ScheduleSnapshotService scheduleSnapshotService;
 
-        @Cacheable(cacheNames = CacheConfig.RANKINGS_CACHE)
+        @Cacheable(cacheNames = CacheConfig.RANKINGS_CACHE, sync = true)
         public RankingsResponse getRankings() {
 
                 Map<Long, List<TrainSchedule>> schedulesByTrainId = scheduleSnapshotService

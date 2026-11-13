@@ -33,7 +33,7 @@ public class RailwayNetworkService {
 
         private final ScheduleSnapshotService scheduleSnapshotService;
 
-        @Cacheable(cacheNames = CacheConfig.NETWORK_CACHE)
+        @Cacheable(cacheNames = CacheConfig.NETWORK_CACHE, sync = true)
         public RailwayNetworkSnapshot buildSnapshot() {
 
                 long startedAt = System.currentTimeMillis();
