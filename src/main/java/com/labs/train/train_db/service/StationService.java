@@ -116,7 +116,7 @@ public class StationService {
                 return best;
         }
 
-        @Cacheable(cacheNames = CacheConfig.SEARCH_INDEX_CACHE, key = "'stations'")
+        @Cacheable(cacheNames = CacheConfig.SEARCH_INDEX_CACHE, key = "'stations'", sync = true)
         public List<StationSearchResponse> fuzzySearchIndex() {
                 return stationRepository.findAllSearchKeys();
         }

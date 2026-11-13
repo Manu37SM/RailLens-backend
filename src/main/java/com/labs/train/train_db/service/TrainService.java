@@ -120,7 +120,7 @@ public class TrainService {
                 return best;
         }
 
-        @Cacheable(cacheNames = CacheConfig.SEARCH_INDEX_CACHE, key = "'trains'")
+        @Cacheable(cacheNames = CacheConfig.SEARCH_INDEX_CACHE, key = "'trains'", sync = true)
         public List<TrainSearchResponse> fuzzySearchIndex() {
                 return trainRepository.findAllSearchKeys();
         }

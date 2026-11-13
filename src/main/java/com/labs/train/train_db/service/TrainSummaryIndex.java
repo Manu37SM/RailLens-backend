@@ -29,7 +29,7 @@ class TrainSummaryIndex {
                         int distanceKm, long journeyMinutes, int halts) {
         }
 
-        @Cacheable(cacheNames = CacheConfig.SEARCH_INDEX_CACHE, key = "'trainSummaries'")
+        @Cacheable(cacheNames = CacheConfig.SEARCH_INDEX_CACHE, key = "'trainSummaries'", sync = true)
         List<TrainSummary> buildIndex() {
 
                 Map<Long, List<TrainSchedule>> schedulesByTrainId = scheduleSnapshotService

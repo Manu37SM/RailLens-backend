@@ -32,7 +32,7 @@ public class FunStatsService {
         private final StationRepository stationRepository;
         private final ScheduleSnapshotService scheduleSnapshotService;
 
-        @Cacheable(cacheNames = CacheConfig.FUN_STATS_CACHE)
+        @Cacheable(cacheNames = CacheConfig.FUN_STATS_CACHE, sync = true)
         public FunStatsResponse getFunStats() {
 
                 List<Station> stations = stationRepository.findAll();

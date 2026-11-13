@@ -32,7 +32,7 @@ public class StatsService {
         private final JourneyDayCalculator journeyDayCalculator;
         private final ScheduleSnapshotService scheduleSnapshotService;
 
-        @Cacheable(cacheNames = CacheConfig.STATS_CACHE)
+        @Cacheable(cacheNames = CacheConfig.STATS_CACHE, sync = true)
         public StatsResponse getStats() {
 
                 RouteDistanceProjection longestRoute = firstOrNull(

@@ -19,7 +19,7 @@ public class ScheduleSnapshotService {
 
         private final TrainScheduleRepository trainScheduleRepository;
 
-        @Cacheable(cacheNames = CacheConfig.SCHEDULE_SNAPSHOT_CACHE)
+        @Cacheable(cacheNames = CacheConfig.SCHEDULE_SNAPSHOT_CACHE, sync = true)
         public List<TrainSchedule> getAllOrderedByTrainThenSequence() {
                 return trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc();
         }
