@@ -1,6 +1,6 @@
 # How to deploy RailLens and RailOps (all repos)
 
-**Last updated:** 13 Nov 2026, after Phase 6 (Razorpay test-mode payments, live seat maps for every class, security audit log, progressive lockout, website security policy, staff change-password).
+**Last updated:** 13 Nov 2026, after Phase 6, plus the Redis choice for RailOps' first deploy.
 
 This guide is the same file in every repo: `train-db`, `train-db-frontend`, `train-db-mobile` and `railops`. Open whichever one you have. It is updated after every phase. The newest version is always the one in `train-db`.
 
@@ -14,7 +14,7 @@ It is written for the day you decide to go live. Until then you can keep merging
 |---|---|---|---|
 | RailLens backend (the API) | `train-db` | **Render** web service `raillens-train-db` (free plan) | `https://raillens-train-db.onrender.com` |
 | RailLens database | (none) | **Neon** (PostgreSQL) | in your Neon dashboard |
-| RailLens website | `train-db-frontend` | **Vercel** | `https://raillens.vercel.app` |
+| RailLens website | `train-db-frontend` | **Vercel** | `https://rail-lens-frontend.vercel.app` |
 | RailLens Android app | `train-db-mobile` | People's phones (you share an `.apk` file) | (none) |
 | RailOps (booking system) | `railops` | Render + Neon + Confluent Cloud | not live yet, see Section 9 |
 
@@ -29,7 +29,7 @@ Update this table whenever you merge or deploy. (I'll update it at the end of ev
 | Change | Repo | Merged to main/master? | Live? | Needs before going live |
 |---|---|---|---|---|
 | Phase 0: IP detection behind Render, admin key needed for catalogue writes, HSTS | `train-db` | ✅ yes | ❓ check (see below) | env var `RAILLENS_CLIENT_IP_TRUSTED_HEADER` (Section 6) |
-| Phase 1: Spring Security "deny by default", safer refresh tokens (DB migration **V6**) | `train-db` | ✅ yes | ❓ check | the database check in Section 5 |
+| Phase 1: Spring Security "deny by default", safer refresh tokens (DB migration **V6**) | `train-db` | ✅ yes | ✅ live | the database check in Section 5 |
 | Phase 2A: admin accounts + one-time codes (DB migration **V7**) | `train-db` | ⏳ branch `security/phase2a-admin-mfa` | ❌ no | 2 new env vars (Section 6) |
 | Phase 2A: admin sign-in screens | `train-db-frontend` | ⏳ branch `security/phase2a-admin-mfa` | ❌ no | backend Phase 2A live first |
 | Phase 2A: admin sign-in screens | `train-db-mobile` | ⏳ branch `security/phase2a-admin-mfa` | ❌ no | backend Phase 2A live first, then build a new APK |
@@ -59,6 +59,13 @@ Update this table whenever you merge or deploy. (I'll update it at the end of ev
 - **Backend:** Render → `raillens-train-db` → **Events**. The newest "Deploy live" line shows the commit. Compare it with `git log` in `train-db`.
 - **Website:** Vercel → your project → **Deployments**. The one marked *Production* shows its commit.
 - **App:** whatever APK you last shared.
+
+---
+
+**To do later (noted 13 Nov 2026):**
+- RailLens backend: move the memory settings from `JAVA_TOOL_OPTIONS` into the `Dockerfile`; load the timetable snapshot (`ScheduleSnapshotService`) with one joined query instead of per-train/per-station lookups; build it at startup so the first visitor after a wake-up doesn't wait about 40 s for stats, rankings or the network map.
+- RailLens backend runs in Render **Oregon** but its database is in Neon **Sydney**: every query crosses the Pacific. Recreating the backend in Singapore (and moving the database to Singapore) would speed up everything.
+- RailOps: move to Spring Boot 4 (Spring Framework 7) before **28 Feb 2027**. Boot 3.5 / Framework 6.2 no longer get open-source security fixes; three Spring CVEs that don't affect RailOps are accepted in `railops/.trivyignore` until then, and the version overrides in `railops/pom.xml` (Jackson, Netty, Tomcat, snappy, lz4, BouncyCastle) can go when Boot 4 lands.
 
 ---
 
@@ -141,7 +148,7 @@ Render → `raillens-train-db` → **Environment**. `render.yaml` lists them too
 | `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | from Neon | **yes** | before |
 | `SPRING_JPA_OPEN_IN_VIEW` | `false` | no | before |
 | `RAILLENS_JWT_SECRET` | 32+ random characters (`openssl rand -base64 32`). Changing it logs everyone out | **yes** | before |
-| `RAILLENS_CORS_ALLOWED_ORIGINS` | `https://raillens.vercel.app` (comma-separate more sites) | no | before |
+| `RAILLENS_CORS_ALLOWED_ORIGINS` | `https://rail-lens-frontend.vercel.app` (comma-separate more sites) | no | before |
 | `RAILLENS_ADMIN_API_KEY` | the old shared admin key (being retired) | **yes** | before |
 | `RAILLENS_CLIENT_IP_TRUSTED_HEADER` | `True-Client-IP` | no | **Phase 0** |
 | `RAILLENS_MFA_ENCRYPTION_KEY` | `openssl rand -base64 32`. **Save a copy now** | **yes** | **Phase 2A** |
@@ -151,6 +158,8 @@ Render → `raillens-train-db` → **Environment**. `render.yaml` lists them too
 | `RAILLENS_RAILOPS_JWKS_URL` | **Leave unset until RailOps is live.** Then: RailOps identity URL + `/.well-known/jwks.json` (e.g. `https://railops-identity.onrender.com/.well-known/jwks.json`) | no | **Phase 4B** |
 | `RAILLENS_RAILOPS_ISSUER` | Set together with the line above: exactly RailOps' `JWT_ISSUER` (on Render, the identity service's URL, e.g. `https://railops-identity.onrender.com`) | no | **Phase 4B** |
 | `RAILLENS_AUTH_LOCKOUT_MAX_MINUTES` | Usually **leave unset** (1440 = 24 hours). Longest lockout after repeated lockouts in a row | no | **Phase 6** |
+| `JAVA_TOOL_OPTIONS` | `-Xmx224m -XX:MaxMetaspaceSize=180m -Xss512k -XX:+UseSerialGC -XX:ReservedCodeCacheSize=64m -XX:MaxDirectMemorySize=32m -XX:TieredStopAtLevel=1 -Dspring.jpa.properties.hibernate.default_batch_fetch_size=500`. Keeps the backend under the free plan's 512 MB (without it Render killed it for running out of memory on 12 and 13 Nov) and lets the timetable snapshot load in about 40 s instead of never | no | **13 Nov 2026** |
+| `MALLOC_ARENA_MAX` | `2` (less memory outside Java's heap) | no | **13 Nov 2026** |
 | `RAILLENS_RAILOPS_API_URL` | Usually **leave unset**: it then uses `RAILLENS_RAILOPS_ISSUER`, which is the right address on Render. Where password changes and account closing for linked accounts are sent | no | **Phase 4D** |
 
 `openssl` comes with **Git Bash** on Windows.
@@ -181,12 +190,13 @@ Only after the backend is live (Section 6).
 
 1. Vercel → project → **Settings → Environment Variables** (Production):
    - `NEXT_PUBLIC_API_BASE_URL` = `https://raillens-train-db.onrender.com/api/v1`
-   - `NEXT_PUBLIC_SITE_URL` = `https://raillens.vercel.app`
+   - `NEXT_PUBLIC_SITE_URL` = `https://rail-lens-frontend.vercel.app`
    - `RAILLENS_PROXY_SECRET` = **exactly** the value of `RAILLENS_CLIENT_IP_PROXY_SECRET` on Render (Phase 2B). Mark it *Sensitive*. Never give it a `NEXT_PUBLIC_` name: that would publish it in the website's JavaScript.
 
    - **Phase 4D (only when Section 9b tells you to):**
      - `NEXT_PUBLIC_RAILLENS_LOGIN_PROVIDER` = `railops` switches sign-in to RailOps. Unset or `raillens` = RailLens' own login, exactly as before. This one is safe to be public.
      - `RAILOPS_API_URL` = the RailOps gateway address, e.g. `https://railops-gateway.onrender.com`.
+     - `RAILOPS_WAKE_URLS` = `https://railops-identity.onrender.com,https://railops-reservation.onrender.com,https://railops-payment.onrender.com,https://railops-notification.onrender.com`. On Render's free plan RailOps services sleep and can't wake each other; with this, the sign-in and booking pages wake them from outside Render. Not secret.
      - `RAILOPS_PROXY_SECRET` = **exactly** the gateway's `RAILOPS_EDGE_PROXY_SECRET` (in RailOps' `deploy/render/out/gateway.env`). Mark it *Sensitive*. Never with a `NEXT_PUBLIC_` name.
 
    - **Phase 5A (only after the 4D switch, Section 9c):**
@@ -222,7 +232,7 @@ Only after the backend is live. "Deploying" the app means building a new APK and
 
 ## 9. RailOps
 
-**Follow RailOps' own guide: `railops/deploy/render/README.md`.** It covers everything step by step: Neon, Confluent Cloud (Kafka), Render Key Value (Redis), the five services, the Angular staff app, costs and troubleshooting.
+**Follow RailOps' own guide: `railops/deploy/render/README.md`.** It covers everything step by step: Neon, Confluent Cloud (Kafka), Redis, the five services, the Angular staff app, costs and troubleshooting.
 
 Things to know first:
 - RailOps payments are **simulated**. Nobody can be charged real money. Keep it that way until a real payment provider is built and reviewed.
@@ -234,6 +244,10 @@ Things to know first:
   - In RailOps' `deploy/render/render.env`:
     - `RAILLENS_API_URL` is where RailLens' API is (already filled in with `https://raillens-train-db.onrender.com/api/v1`).
     - `RAILLENS_WEB_ORIGIN` is the RailLens website, which may call RailOps from the browser (needed for booking in RailLens later). `print-env.sh` turns both into the right service settings.
+- **Redis:** Render allows only **one free Key Value per workspace**, and yours is already used by `devtoolbox-redis` (Oregon). So RailOps uses **Redis Cloud's free database** instead (README Step 7, option B): put its host, port and password in `render.env` (`REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`). That free database has no TLS. It only holds short-lived counters keyed by visitor IP or user ID; move to a TLS Redis before real users.
+- **Kafka (Confluent):** create a **Basic** cluster, not the Standard one the sign-up screen suggests ($0.75/hour). Keep `KAFKA_MAX_PARTITIONS=2` in `render.env`: RailOps' full topic sizes (120 partitions) would bill about $300/month in extra capacity on Basic; at 2 they fit in the free part. It must be set before the services first start.
+- **Neon:** the `railops` project (Singapore, PostgreSQL 17) exists and `neon-setup.sh` has been run on it (13 Nov 2026). Its host goes in `NEON_HOST`.
+- **Region:** the RailLens backend runs in Render **Oregon**, but RailOps goes in **Singapore** with its Neon and Redis, as the README says. RailOps only calls RailLens when staff open trains, so the distance doesn't slow bookings.
 - **The `railops` folder has no git history yet.** Before you start merging RailOps changes, make it a repo: `cd railops`, `git init`, `git add .`, `git commit -m "RailOps baseline"`. Check first that `deploy/render/render.env`, `deploy/render/out/` and `deploy/secrets/` are listed in `.gitignore` (they are), so secrets never get committed.
 
 ---
@@ -282,7 +296,7 @@ After a rollback everyone signs in once more with the RailLens login. **Who can'
 
 Only after the 4D switch has worked (Section 9b). Booking uses the RailOps sign-in, so it can't work before.
 
-1. **RailOps:** deploy the 5A version of **reservation**, **payment** and **gateway**. Run `deploy/render/print-env.sh reservation` and add the new `RAILOPS_PAYMENTS_SIMULATED=true` line on reservation in Render. Check `RAILLENS_WEB_ORIGIN` in RailOps' `render.env` is exactly the website address (`https://raillens.vercel.app`, no `/` at the end): the browser calls RailOps directly and the gateway only allows that site.
+1. **RailOps:** deploy the 5A version of **reservation**, **payment** and **gateway**. Run `deploy/render/print-env.sh reservation` and add the new `RAILOPS_PAYMENTS_SIMULATED=true` line on reservation in Render. Check `RAILLENS_WEB_ORIGIN` in RailOps' `render.env` is exactly the website address (`https://rail-lens-frontend.vercel.app`, no `/` at the end): the browser calls RailOps directly and the gateway only allows that site.
 2. **Open trains for booking** in the RailOps staff app (*Run operations → Open a train for booking*), for dates in the next few weeks: `railops/docs/runbooks/open-trains-for-booking.md`. Only those trains and dates can be booked; for others the website says "isn't open for booking on that date yet".
 3. **Website:** merge `feature/phase5a-booking`, add `NEXT_PUBLIC_RAILOPS_API_URL` (Section 7), redeploy.
 4. **Check** (private window, signed in):
@@ -392,6 +406,7 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 
 | Date | What changed |
 |---|---|
+| 13 Nov 2026 | RailOps CI security scan: patched Jackson, Netty, Tomcat, snappy-java, lz4-java, BouncyCastle; staff web image on nginx 1.30 with Alpine updates applied at build; `.trivyignore` for three non-applicable Spring CVEs (expires 28 Feb 2027); Boot 4 move added to the to-do list. No new settings. |
 | 12 Nov 2026 | First version: covers Phases 0, 1 and 2A, holding merges back from going live, the database check, and the Phase 2A admin setup. |
 | 12 Nov 2026 | Phase 2B: two matching proxy secrets (Render + Vercel), merge order 2A → 2B, cookie checks in the smoke test, three new troubleshooting rows. |
 | 12 Nov 2026 | Phase 3A: RailOps web restyle in the tracker (no new settings); note to put `railops` under git before merging. |
@@ -399,6 +414,11 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 | 13 Nov 2026 | Phase 4A in the tracker; new section 9b announcing the single-login plan and its one breaking step (4D). |
 | 13 Nov 2026 | Phase 4B: new branch and merge order, migration V8, two optional backend settings (leave unset until RailOps is live). |
 | 13 Nov 2026 | Phase 4C: account move (tracker, merge order, the three-step order in 9b). |
+| 13 Nov 2026 | Free-plan wake-up: RailOps services can't wake each other on Render, so the RailLens website (`RAILOPS_WAKE_URLS`) and app wake them. RailOps staff app: authenticator setup shows a QR code; Show/Hide on the login password. |
+| 13 Nov 2026 | The website's real address is `https://rail-lens-frontend.vercel.app` (not `raillens.vercel.app`): fixed everywhere, including RailOps' `RAILLENS_WEB_ORIGIN` and the app's Share links. Gateway wake-up for sleeping free services (`RAILOPS_EDGE_WAKE_ENABLED`). |
+| 13 Nov 2026 | RailOps deployed and live on Render. RailLens backend: everything up to Phase 6 merged and live (V8 to V10 applied); memory fix (`JAVA_TOOL_OPTIONS`, `MALLOC_ARENA_MAX`) after out-of-memory crashes; follow-ups listed under Section 2. |
+| 13 Nov 2026 | RailOps: Kafka partition cap for Confluent Basic (`KAFKA_MAX_PARTITIONS`), Basic-not-Standard warning, Neon project set up. |
+| 13 Nov 2026 | RailOps first deploy: Redis Cloud free instead of Render Key Value (the workspace's one free Key Value is taken), region note, `REDIS_PASSWORD`/`REDIS_USERNAME`/`REDIS_SSL` in `render.env`. |
 | 13 Nov 2026 | Phase 6: Razorpay test mode (new Section 9d), seats and coach sets, audit log and progressive lockout (backend setting), CSP and audit smoke checks, four troubleshooting rows. |
 | 13 Nov 2026 | Phase 5B: booking in the Android app (tracker, merge order, app steps in 9c, Section 8 check). |
 | 13 Nov 2026 | Phase 5A: booking on the website (tracker, merge order, new Section 9c with order, checks and rollback, two website settings, one RailOps setting, three troubleshooting rows). |
