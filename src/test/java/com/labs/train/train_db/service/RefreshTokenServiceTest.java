@@ -35,7 +35,8 @@ class RefreshTokenServiceTest {
 
         @BeforeEach
         void setUp() {
-                refreshTokenService = new RefreshTokenService(refreshTokenRepository);
+                refreshTokenService = new RefreshTokenService(refreshTokenRepository,
+                                org.mockito.Mockito.mock(com.labs.train.train_db.audit.SecurityAuditService.class));
                 ReflectionTestUtils.setField(refreshTokenService, "refreshExpirationDays", 30L);
                 ReflectionTestUtils.setField(refreshTokenService, "reuseGraceSeconds", 10L);
         }

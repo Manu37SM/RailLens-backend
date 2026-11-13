@@ -34,4 +34,15 @@ services:
       # Cloudflare fronts every Render service and sets True-Client-IP; Render support recommends reading it.
       - key: RAILLENS_CLIENT_IP_TRUSTED_HEADER
         value: True-Client-IP
+      # The website's sign-in proxy (Vercel) passes the visitor's IP with this secret (Phase 2B). Same value as
+      # RAILLENS_PROXY_SECRET in Vercel. `openssl rand -base64 32`.
+      - key: RAILLENS_CLIENT_IP_PROXY_SECRET
+        sync: false
+      # Single login with RailOps (Phase 4B). Leave unset until RailOps is live; see DEPLOYMENT.md.
+      - key: RAILLENS_RAILOPS_JWKS_URL
+        sync: false
+      - key: RAILLENS_RAILOPS_ISSUER
+        sync: false
+      - key: RAILLENS_RAILOPS_API_URL
+        sync: false
 

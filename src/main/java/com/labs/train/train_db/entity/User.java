@@ -31,8 +31,12 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
 
-    @Column(nullable = false)
+    /** Null for a profile created from a RailOps login (Phase 4B): that person signs in at RailOps. */
     private String passwordHash;
+
+    /** The RailOps account this profile belongs to (single login, Phase 4B). Unique; null until linked. */
+    @Column(unique = true)
+    private java.util.UUID railopsUserId;
 
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
@@ -41,6 +45,10 @@ public class User {
     private int failedLoginAttempts = 0;
 
     private LocalDateTime lockedUntil;
+
+    /** Phase 6: lockouts in a row since the last successful sign-in (progressive lockout). */
+    @Column(name = "lockout_count", nullable = false)
+    private int lockoutCount = 0;
 
     /** USER or ADMIN (V7). Admin rights also require an MFA session; see JwtAuthenticationFilter. */
     @Column(nullable = false, length = 16)

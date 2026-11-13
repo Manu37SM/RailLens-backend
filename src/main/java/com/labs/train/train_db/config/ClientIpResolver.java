@@ -1,10 +1,13 @@
 package com.labs.train.train_db.config;
 
 import java.net.InetAddress;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -20,6 +23,10 @@ import lombok.extern.slf4j.Slf4j;
  *
  * <p>Order of trust:
  * <ol>
+ *   <li>Our own website's server (the sign-in proxy on Vercel, Phase 2B) sends the visitor's IP in
+ *       {@code X-RailLens-Client-IP} together with {@code X-RailLens-Proxy-Secret}. The header is believed only when
+ *       the secret matches {@code raillens.client-ip.proxy-secret} (constant-time). Without this, every visitor signing
+ *       in through the website would share the website server's IP and one rate-limit bucket.</li>
  *   <li>If the TCP peer is not a trusted proxy, it IS the client: forwarding headers are ignored.</li>
  *   <li>If a trusted single-value header is configured (on Render: {@code True-Client-IP}, set by Cloudflare,
  *       which fronts every Render service) and holds an IP literal, use it.</li>
@@ -35,13 +42,24 @@ public class ClientIpResolver {
         static final String DEFAULT_TRUSTED_PROXIES =
                         "127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1/128,fc00::/7";
 
+        static final String PROXY_CLIENT_IP_HEADER = "X-RailLens-Client-IP";
+        static final String PROXY_SECRET_HEADER = "X-RailLens-Proxy-Secret";
+
         private final List<Cidr> trustedProxies;
         private final String trustedHeader;
+        private final byte[] proxySecret;
         private final AtomicBoolean warnedUntrustedPeer = new AtomicBoolean();
+        private final AtomicBoolean warnedBadProxySecret = new AtomicBoolean();
 
+        public ClientIpResolver(String trustedProxies, String trustedHeader) {
+                this(trustedProxies, trustedHeader, "");
+        }
+
+        @Autowired
         public ClientIpResolver(
                         @Value("${raillens.client-ip.trusted-proxies:" + DEFAULT_TRUSTED_PROXIES + "}") String trustedProxies,
-                        @Value("${raillens.client-ip.trusted-header:}") String trustedHeader) {
+                        @Value("${raillens.client-ip.trusted-header:}") String trustedHeader,
+                        @Value("${raillens.client-ip.proxy-secret:}") String proxySecret) {
                 this.trustedProxies = new ArrayList<>();
                 for (String cidr : trustedProxies.split(",")) {
                         if (!cidr.isBlank()) {
@@ -49,6 +67,12 @@ public class ClientIpResolver {
                         }
                 }
                 this.trustedHeader = trustedHeader == null ? "" : trustedHeader.trim();
+                String secret = proxySecret == null ? "" : proxySecret.trim();
+                if (!secret.isEmpty() && secret.length() < 32) {
+                        throw new IllegalStateException("raillens.client-ip.proxy-secret must be at least 32 characters "
+                                        + "(openssl rand -base64 32)");
+                }
+                this.proxySecret = secret.isEmpty() ? null : secret.getBytes(StandardCharsets.UTF_8);
         }
 
         /** Remote address only: for tests and for deployments with no proxy in front. */
@@ -57,6 +81,10 @@ public class ClientIpResolver {
         }
 
         public String resolve(HttpServletRequest request) {
+                String fromOurProxy = fromAuthenticatedProxy(request);
+                if (fromOurProxy != null) {
+                        return fromOurProxy;
+                }
                 String peer = request.getRemoteAddr();
                 InetAddress peerAddress = parse(peer);
                 if (peerAddress == null || !isTrusted(peerAddress)) {
@@ -92,6 +120,27 @@ public class ClientIpResolver {
                         }
                 }
                 return peer;
+        }
+
+        /** The visitor IP our own website server vouches for, or null if the request isn't from it. */
+        private String fromAuthenticatedProxy(HttpServletRequest request) {
+                if (proxySecret == null) {
+                        return null;   // feature off: the headers mean nothing
+                }
+                String presented = request.getHeader(PROXY_SECRET_HEADER);
+                if (presented == null) {
+                        return null;
+                }
+                if (!MessageDigest.isEqual(proxySecret, presented.getBytes(StandardCharsets.UTF_8))) {
+                        if (warnedBadProxySecret.compareAndSet(false, true)) {
+                                log.warn("Ignoring {}: the proxy secret does not match. Check that RAILLENS_PROXY_SECRET "
+                                                + "(website) and RAILLENS_CLIENT_IP_PROXY_SECRET (backend) are the same.",
+                                                PROXY_CLIENT_IP_HEADER);
+                        }
+                        return null;
+                }
+                InetAddress client = parse(request.getHeader(PROXY_CLIENT_IP_HEADER));
+                return client == null ? null : client.getHostAddress();
         }
 
         private boolean isTrusted(InetAddress address) {

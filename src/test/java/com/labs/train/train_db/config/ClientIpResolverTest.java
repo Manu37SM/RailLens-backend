@@ -93,4 +93,46 @@ class ClientIpResolverTest {
         void withNoTrustedProxiesTheTcpPeerIsTheClient() {
                 assertThat(ClientIpResolver.direct().resolve(request("10.0.0.1", "203.0.113.5"))).isEqualTo("10.0.0.1");
         }
+
+        private static final String SECRET = "a-proxy-secret-that-is-at-least-32-characters";
+        private final ClientIpResolver withWebsiteProxy =
+                        new ClientIpResolver(ClientIpResolver.DEFAULT_TRUSTED_PROXIES, "True-Client-IP", SECRET);
+
+        private static MockHttpServletRequest fromWebsite(String secret, String clientIp) {
+                // The website server reaches Render like any client: through Cloudflare, with its own address.
+                MockHttpServletRequest r = request("10.0.0.1", "76.76.21.21");
+                r.addHeader("True-Client-IP", "76.76.21.21");
+                if (secret != null) {
+                        r.addHeader("X-RailLens-Proxy-Secret", secret);
+                }
+                r.addHeader("X-RailLens-Client-IP", clientIp);
+                return r;
+        }
+
+        @Test
+        void theWebsiteServerCanVouchForTheVisitorIpWithTheSharedSecret() {
+                assertThat(withWebsiteProxy.resolve(fromWebsite(SECRET, "203.0.113.77"))).isEqualTo("203.0.113.77");
+        }
+
+        @Test
+        void withoutTheRightSecretTheVouchedIpIsIgnored() {
+                // Anyone can send the header; only the website server knows the secret.
+                assertThat(withWebsiteProxy.resolve(fromWebsite(null, "203.0.113.77"))).isEqualTo("76.76.21.21");
+                assertThat(withWebsiteProxy.resolve(fromWebsite("wrong-secret-of-a-similar-length-123456", "203.0.113.77")))
+                                .isEqualTo("76.76.21.21");
+                assertThat(behindCloudflare.resolve(fromWebsite(SECRET, "203.0.113.77")))   // secret not configured here
+                                .isEqualTo("76.76.21.21");
+        }
+
+        @Test
+        void aVouchedValueMustBeAnIpLiteral() {
+                assertThat(withWebsiteProxy.resolve(fromWebsite(SECRET, "evil.example.com"))).isEqualTo("76.76.21.21");
+                assertThat(withWebsiteProxy.resolve(fromWebsite(SECRET, "2001:db8::5"))).isEqualTo("2001:db8:0:0:0:0:0:5");
+        }
+
+        @Test
+        void aShortProxySecretIsRefusedAtStartup() {
+                assertThatThrownBy(() -> new ClientIpResolver("", "", "short"))
+                                .isInstanceOf(IllegalStateException.class);
+        }
 }

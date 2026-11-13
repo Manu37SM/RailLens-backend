@@ -72,11 +72,25 @@ raillens.admin.bootstrap-usernames=
 raillens.admin.api-key=<ADMIN_API_KEY>
 raillens.admin.legacy-key-enabled=true
 
+# Single login with RailOps (Phase 4B). Leave both blank until RailOps is live.
+# When set, RailOps access tokens (RS256) are accepted alongside RailLens' own.
+raillens.railops.jwks-url=
+raillens.railops.issuer=
+# Phase 4D: where password changes and account closing for linked profiles are sent (RailOps identity service).
+# Blank = the issuer above, which is the identity service's own URL on Render.
+raillens.railops.api-url=
+
 # Comma-separated list of origins allowed to call /api/** from a browser.
 # Defaults to http://localhost:3000 if unset. Set this to your deployed
 # frontend's origin(s) in any non-local environment, or CORS will silently
 # reject every request from it.
 raillens.cors.allowed-origins=http://localhost:3000
+
+# Lets the website's own server (its sign-in proxy) pass the visitor's IP in
+# X-RailLens-Client-IP, so rate limits stay per visitor. Must be the same
+# value as RAILLENS_PROXY_SECRET in the website. 32+ characters
+# (`openssl rand -base64 32`). Leave blank to ignore that header.
+raillens.client-ip.proxy-secret=
 
 # HMAC signing secret for login/register JWTs (see JwtService). Required -
 # the app refuses to start without one, and refuses to start if it's under
@@ -108,6 +122,10 @@ raillens.jwt.refresh-expiration-days=30
 # account). Defaults shown below if unset.
 raillens.auth.max-failed-login-attempts=5
 raillens.auth.lockout-duration-minutes=15
+# Phase 6, progressive lockout: each further lockout in a row (no successful sign-in in between) doubles the lock,
+# up to this cap (24 hours by default). Trade-off: someone who knows a username can keep that account locked for
+# longer; the per-IP rate limit slows that down. Every lockout is in the security audit log.
+raillens.auth.lockout-max-minutes=1440
 
 # Health check for deployment platforms (Render, Docker, load balancers,
 # etc.) - GET /actuator/health returns {"status":"UP"} once the app and its

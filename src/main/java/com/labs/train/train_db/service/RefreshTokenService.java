@@ -18,6 +18,9 @@ import com.labs.train.train_db.entity.User;
 import com.labs.train.train_db.exception.InvalidCredentialsException;
 import com.labs.train.train_db.repository.RefreshTokenRepository;
 
+import com.labs.train.train_db.audit.AuditActions;
+import com.labs.train.train_db.audit.SecurityAuditService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -29,6 +32,7 @@ public class RefreshTokenService {
         private static final SecureRandom RANDOM = new SecureRandom();
 
         private final RefreshTokenRepository refreshTokenRepository;
+        private final SecurityAuditService audit;
 
         @Value("${raillens.jwt.refresh-expiration-days:30}")
         private long refreshExpirationDays;
@@ -96,6 +100,8 @@ public class RefreshTokenService {
                                 int revoked = refreshTokenRepository.revokeFamily(existing.getFamilyId());
                                 log.warn("Refresh token reuse detected for user id {} (family {}): revoked {} token(s)",
                                                 existing.getUser().getId(), existing.getFamilyId(), revoked);
+                                audit.record(existing.getUser().getUsername(), AuditActions.REFRESH_TOKEN_REUSED,
+                                                existing.getUser().getUsername(), "revoked " + revoked + " session token(s)");
                         }
                         throw invalid();
                 }

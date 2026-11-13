@@ -73,18 +73,20 @@ public class AuthController {
         @PutMapping("/password")
         public ResponseEntity<Void> changePassword(
                         @RequestAttribute("authenticatedUsername") String username,
+                        @RequestAttribute(name = "railOpsAccessToken", required = false) String railOpsToken,
                         @Valid @RequestBody ChangePasswordRequest request) {
 
-                authService.changePassword(username, request);
+                authService.changePassword(username, request, railOpsToken);
                 return ResponseEntity.noContent().build();
         }
 
         @DeleteMapping("/me")
         public ResponseEntity<Void> deleteAccount(
                         @RequestAttribute("authenticatedUsername") String username,
+                        @RequestAttribute(name = "railOpsAccessToken", required = false) String railOpsToken,
                         @Valid @RequestBody DeleteAccountRequest request) {
 
-                authService.deleteAccount(username, request.password());
+                authService.deleteAccount(username, request.password(), railOpsToken);
                 return ResponseEntity.noContent().build();
         }
 }
