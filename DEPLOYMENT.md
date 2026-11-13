@@ -1,6 +1,6 @@
 # How to deploy RailLens and RailOps (all repos)
 
-**Last updated:** 13 Nov 2026, after Phase 5B (booking in the Android app too; website and app each off until you switch them on).
+**Last updated:** 13 Nov 2026, after Phase 6 (Razorpay test-mode payments, live seat maps for every class, security audit log, progressive lockout, website security policy, staff change-password).
 
 This guide is the same file in every repo: `train-db`, `train-db-frontend`, `train-db-mobile` and `railops`. Open whichever one you have. It is updated after every phase. The newest version is always the one in `train-db`.
 
@@ -48,8 +48,12 @@ Update this table whenever you merge or deploy. (I'll update it at the end of ev
 | Phase 5A: RailOps gets a public "find a train's run" lookup and a demo-only simulated payment passengers can finish | `railops` (reservation, payment, gateway) | n/a (in the zip) | ❌ never deployed | new reservation setting `RAILOPS_PAYMENTS_SIMULATED=true` (printed by `print-env.sh`) |
 | Phase 5A: **booking on the website** (train page → seats → passengers → pay (simulated) → ticket; my bookings; cancel) | `train-db-frontend` | ⏳ branch `feature/phase5a-booking` (built on 4D) | ❌ no | the 4D switch done, RailOps 5A live, then `NEXT_PUBLIC_RAILOPS_API_URL` (Section 7). Without it nothing shows. |
 | Phase 5B: **booking in the Android app** (same flow; also: bookings and profile no longer kept in the offline cache, and a slow server no longer signs you out) | `train-db-mobile` | ⏳ branch `feature/phase5b-booking` (built on 4D) | ❌ no | an APK with `BOOKING_ENABLED = false` (the default) shows no booking. Switch on by Section 9c. |
+| Phase 6: **Razorpay test mode** (optional, instead of the simulated payment); all 8 classes with coach layouts and standard coach sets (Rajdhani, Shatabdi...); public **live seat map**; staff can change their password | `railops` (payment, reservation, gateway, staff app) | n/a (in the zip) | ❌ never deployed | nothing for seats. For Razorpay: Section 9d. |
+| Phase 6: security audit log (DB migration **V9**) and progressive lockout (DB migration **V10**) | `train-db` | ⏳ branch `security/phase6-audit-lockout` (built on 4D) | ❌ no | nothing new to set. Optional `RAILLENS_AUTH_LOCKOUT_MAX_MINUTES` (default 1440). V9/V10 run by themselves. |
+| Phase 6: seat map + berth preference in booking; Razorpay mode; Content-Security-Policy header | `train-db-frontend` | ⏳ branch `feature/phase6-payments-seats` (built on 5A) | ❌ no | RailOps 6 live for the seat map. Razorpay: `NEXT_PUBLIC_RAILOPS_PAYMENTS=razorpay` (Section 9d). The CSP needs nothing; check Section 10. |
+| Phase 6: seat map + berth preference; Razorpay mode | `train-db-mobile` | ⏳ branch `feature/phase6-payments-seats` (built on 5B) | ❌ no | RailOps 6 live. Razorpay: `RAILOPS_PAYMENTS = 'razorpay'` in `src/config/login.ts`, new APK. |
 
-**Merging the branches:** each branch contains the ones before it. In `train-db`, merge in this order: `security/phase2a-admin-mfa` → `security/phase2b-web-cookie` → `security/phase4b-railops-tokens` → `security/phase4c-account-move` → `security/phase4d-login-switch`. In `train-db-frontend`: 2A → 2B → `security/phase4d-login-switch` → `feature/phase5a-booking`. In `train-db-mobile`: 2A → `security/phase4d-login-switch` → `feature/phase5b-booking`.
+**Merging the branches:** each branch contains the ones before it. In `train-db`, merge in this order: `security/phase2a-admin-mfa` → `security/phase2b-web-cookie` → `security/phase4b-railops-tokens` → `security/phase4c-account-move` → `security/phase4d-login-switch` → `security/phase6-audit-lockout`. In `train-db-frontend`: 2A → 2B → `security/phase4d-login-switch` → `feature/phase5a-booking` → `feature/phase6-payments-seats`. In `train-db-mobile`: 2A → `security/phase4d-login-switch` → `feature/phase5b-booking` → `feature/phase6-payments-seats`.
 
 **How to see what's live right now**
 - **Backend:** Render → `raillens-train-db` → **Events**. The newest "Deploy live" line shows the commit. Compare it with `git log` in `train-db`.
@@ -146,6 +150,7 @@ Render → `raillens-train-db` → **Environment**. `render.yaml` lists them too
 | `RAILLENS_CLIENT_IP_PROXY_SECRET` | `openssl rand -base64 32`. **The same value** goes into Vercel as `RAILLENS_PROXY_SECRET` (Section 7) | **yes** | **Phase 2B** |
 | `RAILLENS_RAILOPS_JWKS_URL` | **Leave unset until RailOps is live.** Then: RailOps identity URL + `/.well-known/jwks.json` (e.g. `https://railops-identity.onrender.com/.well-known/jwks.json`) | no | **Phase 4B** |
 | `RAILLENS_RAILOPS_ISSUER` | Set together with the line above: exactly RailOps' `JWT_ISSUER` (on Render, the identity service's URL, e.g. `https://railops-identity.onrender.com`) | no | **Phase 4B** |
+| `RAILLENS_AUTH_LOCKOUT_MAX_MINUTES` | Usually **leave unset** (1440 = 24 hours). Longest lockout after repeated lockouts in a row | no | **Phase 6** |
 | `RAILLENS_RAILOPS_API_URL` | Usually **leave unset**: it then uses `RAILLENS_RAILOPS_ISSUER`, which is the right address on Render. Where password changes and account closing for linked accounts are sent | no | **Phase 4D** |
 
 `openssl` comes with **Git Bash** on Windows.
@@ -298,6 +303,21 @@ Only after the 4D switch has worked (Section 9b). Booking uses the RailOps sign-
 
 **Rollback:** remove `NEXT_PUBLIC_RAILOPS_API_URL` on Vercel and redeploy: booking disappears from the website; bookings already made stay in RailOps.
 
+## 9d. Payments with Razorpay test mode (Phase 6, optional)
+
+Until you do this, RailOps keeps its **simulated** payment (the "Pay (simulated)" button). Razorpay test mode shows Razorpay's real payment page with **test cards and test UPI IDs**: still no real money. RailOps refuses live keys (`rzp_live_...`) and won't start with one, because selling real train tickets needs IRCTC authorisation.
+
+1. **Razorpay account** (free): sign up at razorpay.com, switch the dashboard to **Test Mode**. **Account & Settings → API Keys → Generate Test Key**. Keep the Key ID (`rzp_test_...`) and Key Secret.
+2. **Webhook:** **Account & Settings → Webhooks → Add**. URL `https://<your RailOps gateway>/webhooks/razorpay`; a secret you make up (`openssl rand -hex 24`); events **payment_link.paid**, **payment_link.expired**, **payment_link.cancelled**, **refund.processed**.
+3. **RailOps:** in `deploy/render/render.env` set `PAYMENT_GATEWAY=razorpay`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`. These are secrets: `render.env` is never committed. Run `deploy/render/print-env.sh payment` and `... reservation`, and paste the lines into those two services on Render (payment gets the Razorpay keys and the `razorpay` profile; reservation gets `RAILOPS_PAYMENTS_SIMULATED=false`). Redeploy both.
+4. **Website:** Vercel → `NEXT_PUBLIC_RAILOPS_PAYMENTS=razorpay` → redeploy. Booking pages now say "Pay on Razorpay (test mode)" and only open `https://rzp.io/...` links.
+5. **App:** `RAILOPS_PAYMENTS = 'razorpay'` in `src/config/login.ts`, new APK.
+6. **Check:** book → **Pay on Razorpay (test mode)** → pay with a test card from Razorpay's docs (search "Razorpay test cards") → you come back to the booking → within a few seconds it says **Booked**. Cancel → Razorpay dashboard (Test Mode) → **Refunds** shows the refund.
+
+**Rollback:** set `PAYMENT_GATEWAY=sim` again (print-env, paste, redeploy payment and reservation) and `NEXT_PUBLIC_RAILOPS_PAYMENTS=simulated` on Vercel. Bookings paid through Razorpay stay paid.
+
+**Seats (Phase 6, nothing to set):** staff can now open trains with any class, or pick a **standard coach set** (Rajdhani, Duronto, Mail/Express, Shatabdi, Vande Bharat, Jan Shatabdi, Garib Rath) in *Run operations → Open a train for booking*. Passengers see a **live seat map** while booking (refreshes every 15 s) and can ask for a berth or seat type. These are RailOps' own bookings and layouts, not Indian Railways' data, which isn't publicly available.
+
 ## 10. Smoke test after every deploy (5 minutes)
 
 **Backend**
@@ -316,6 +336,8 @@ Only after the 4D switch has worked (Section 9b). Booking uses the RailOps sign-
   - **Cookies** → `__Secure-raillens_rt` is ticked **HttpOnly** and **Secure**
 - [ ] (Phase 2B+) Render logs must **not** show `Ignoring X-RailLens-Client-IP`
 - [ ] (After 5A) The booking checks in Section 9c step 4
+- [ ] (After Phase 6, website) DevTools → Console on the home page, a train page and a booking page: **no** "Content Security Policy" errors. If one appears, roll the website back and send me the message
+- [ ] (After Phase 6, backend) As an admin signed in with your code: `GET /api/v1/admin/audit/verify` says `"intact": true`
 - [ ] (After the 4D switch) The checks in Section 9b step 6. In DevTools the cookie is now `__Secure-raillens_ro_rt` (HttpOnly, Secure)
 
 **Android app**
@@ -357,6 +379,10 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 | (5A) Website: "Can't reach the booking service" or a CORS error in the browser console | RailOps' `RAILLENS_WEB_ORIGIN` isn't exactly the website address, or the gateway is asleep (wait a minute). Fix `render.env`, re-run `print-env.sh gateway`, update the gateway's setting. |
 | (5A) "This train isn't open for booking on that date yet" | Expected for trains and dates staff haven't opened. Open them in the RailOps staff app (Section 9c, step 2). |
 | (5A) Paid, but it stays "Waiting for payment" | RailOps' Kafka (Confluent) or payment service is down or asleep: the payment is recorded and the booking is confirmed once they're back (RailOps' sweeper also checks). Look at the payment and reservation logs on Render. |
+| (6) Razorpay: paid, but the booking stays "Waiting for payment" | The Razorpay webhook isn't reaching RailOps: check its URL ends in `/webhooks/razorpay` and the secret equals `RAZORPAY_WEBHOOK_SECRET`. RailOps' reconciler also checks unpaid links after 15 minutes. |
+| (6) Payment service won't start: "must be a TEST key" | A live key was pasted. Use the `rzp_test_...` key. |
+| (6) Website: a feature stopped working and the console shows "Content Security Policy" | A new outside address is being called. Send me the console line; meanwhile roll back the website. |
+| (6) Audit verify says `"intact": false` | Someone changed history in `security_audit` with database owner rights. Note the `firstBrokenId`, keep a database backup, and tell me. |
 | (4D) Anything else after the switch | Roll back (Section 9b → Rollback), then send me the Vercel log lines for `/api/auth/login`. |
 | App update won't install | `versionCode` wasn't raised, or it was signed with a different key than last time. |
 
@@ -373,6 +399,7 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 | 13 Nov 2026 | Phase 4A in the tracker; new section 9b announcing the single-login plan and its one breaking step (4D). |
 | 13 Nov 2026 | Phase 4B: new branch and merge order, migration V8, two optional backend settings (leave unset until RailOps is live). |
 | 13 Nov 2026 | Phase 4C: account move (tracker, merge order, the three-step order in 9b). |
+| 13 Nov 2026 | Phase 6: Razorpay test mode (new Section 9d), seats and coach sets, audit log and progressive lockout (backend setting), CSP and audit smoke checks, four troubleshooting rows. |
 | 13 Nov 2026 | Phase 5B: booking in the Android app (tracker, merge order, app steps in 9c, Section 8 check). |
 | 13 Nov 2026 | Phase 5A: booking on the website (tracker, merge order, new Section 9c with order, checks and rollback, two website settings, one RailOps setting, three troubleshooting rows). |
 | 13 Nov 2026 | Phase 4D (Android app): tracker row, merge order, the app's switch steps and rollback in 9b, a check in Section 8, one troubleshooting row. |

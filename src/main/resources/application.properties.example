@@ -122,6 +122,10 @@ raillens.jwt.refresh-expiration-days=30
 # account). Defaults shown below if unset.
 raillens.auth.max-failed-login-attempts=5
 raillens.auth.lockout-duration-minutes=15
+# Phase 6, progressive lockout: each further lockout in a row (no successful sign-in in between) doubles the lock,
+# up to this cap (24 hours by default). Trade-off: someone who knows a username can keep that account locked for
+# longer; the per-IP rate limit slows that down. Every lockout is in the security audit log.
+raillens.auth.lockout-max-minutes=1440
 
 # Health check for deployment platforms (Render, Docker, load balancers,
 # etc.) - GET /actuator/health returns {"status":"UP"} once the app and its

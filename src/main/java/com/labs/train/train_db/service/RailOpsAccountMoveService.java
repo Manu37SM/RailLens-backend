@@ -8,6 +8,9 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 
+import com.labs.train.train_db.audit.AuditActions;
+import com.labs.train.train_db.audit.SecurityAuditService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -34,6 +37,7 @@ public class RailOpsAccountMoveService {
         }
 
         private final JdbcClient jdbc;
+        private final SecurityAuditService audit;
 
         /** Accounts with a RailLens password and no link yet, after {@code afterId}, oldest first. */
         public List<AccountToMove> pending(long afterId, int limit) {
@@ -77,6 +81,13 @@ public class RailOpsAccountMoveService {
                         }
                 }
                 log.info("RailOps account links stored: {} new, {} already, {} conflicts", linked, already, conflicts.size());
+                audit.record(currentAdmin(), AuditActions.RAILOPS_ACCOUNTS_LINKED, null,
+                                linked + " new, " + already + " already, " + conflicts.size() + " conflicts");
                 return new LinkResult(linked, already, conflicts);
+        }
+
+        private static String currentAdmin() {
+                var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+                return auth == null ? "system" : auth.getName();
         }
 }

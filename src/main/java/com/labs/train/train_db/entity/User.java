@@ -46,6 +46,10 @@ public class User {
 
     private LocalDateTime lockedUntil;
 
+    /** Phase 6: lockouts in a row since the last successful sign-in (progressive lockout). */
+    @Column(name = "lockout_count", nullable = false)
+    private int lockoutCount = 0;
+
     /** USER or ADMIN (V7). Admin rights also require an MFA session; see JwtAuthenticationFilter. */
     @Column(nullable = false, length = 16)
     private String role = ROLE_USER;

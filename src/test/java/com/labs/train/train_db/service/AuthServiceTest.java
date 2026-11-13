@@ -46,6 +46,9 @@ class AuthServiceTest {
         @Mock
         private com.labs.train.train_db.security.MfaSecretCipher mfaSecretCipher;
 
+        @Mock
+        private com.labs.train.train_db.audit.SecurityAuditService audit;
+
         @InjectMocks
         private AuthService authService;
 

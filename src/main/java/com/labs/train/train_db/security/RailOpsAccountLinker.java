@@ -11,6 +11,9 @@ import org.springframework.stereotype.Component;
 import com.labs.train.train_db.entity.User;
 import com.labs.train.train_db.repository.UserRepository;
 
+import com.labs.train.train_db.audit.AuditActions;
+import com.labs.train.train_db.audit.SecurityAuditService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -38,6 +41,7 @@ public class RailOpsAccountLinker {
         }
 
         private final UserRepository users;
+        private final SecurityAuditService audit;
 
         public Result resolve(RailOpsTokenVerifier.Verified who) {
                 Optional<User> linked = users.findByRailopsUserId(who.userId());
@@ -56,6 +60,7 @@ public class RailOpsAccountLinker {
                 try {
                         User saved = users.save(profile);
                         log.info("Created RailLens profile {} for RailOps user {}", saved.getUsername(), who.userId());
+                        audit.record(saved.getUsername(), AuditActions.RAILOPS_PROFILE_CREATED, saved.getUsername(), null);
                         return new Result(Outcome.CREATED, saved);
                 } catch (DataIntegrityViolationException raced) {
                         // Two first requests at once: the other one created it.
