@@ -48,4 +48,4 @@ RUN java $JAVA_OPTS -XX:AOTCacheOutput=app.aot -Dspring.context.exit=onRefresh -
 
 USER raillens
 
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -XX:AOTCache=app.aot -jar app.jar --server.port=${PORT} \"--spring.datasource.url=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=require&currentSchema=public\""]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar --server.port=${PORT} \"--spring.datasource.url=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=require&currentSchema=public\""]
