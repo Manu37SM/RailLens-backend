@@ -12,7 +12,7 @@ It is written for the day you decide to go live. Until then you can keep merging
 
 | Piece | Repo | Runs on | Address |
 |---|---|---|---|
-| RailLens backend (the API) | `train-db` | **Render** web service `raillens-train-db` (free plan) | `https://raillens-train-db.onrender.com` |
+| RailLens backend (the API) | `train-db` | **Render** web service `raillens-api` (free plan) | `https://raillens-api.onrender.com` |
 | RailLens database | (none) | **Neon** (PostgreSQL) | in your Neon dashboard |
 | RailLens website | `train-db-frontend` | **Vercel** | `https://rail-lens-frontend.vercel.app` |
 | RailLens Android app | `train-db-mobile` | People's phones (you share an `.apk` file) | (none) |
@@ -56,16 +56,43 @@ Update this table whenever you merge or deploy. (I'll update it at the end of ev
 **Merging the branches:** each branch contains the ones before it. In `train-db`, merge in this order: `security/phase2a-admin-mfa` → `security/phase2b-web-cookie` → `security/phase4b-railops-tokens` → `security/phase4c-account-move` → `security/phase4d-login-switch` → `security/phase6-audit-lockout`. In `train-db-frontend`: 2A → 2B → `security/phase4d-login-switch` → `feature/phase5a-booking` → `feature/phase6-payments-seats`. In `train-db-mobile`: 2A → `security/phase4d-login-switch` → `feature/phase5b-booking` → `feature/phase6-payments-seats`.
 
 **How to see what's live right now**
-- **Backend:** Render → `raillens-train-db` → **Events**. The newest "Deploy live" line shows the commit. Compare it with `git log` in `train-db`.
+- **Backend:** Render → `raillens-api` → **Events**. The newest "Deploy live" line shows the commit. Compare it with `git log` in `train-db`.
 - **Website:** Vercel → your project → **Deployments**. The one marked *Production* shows its commit.
 - **App:** whatever APK you last shared.
 
 ---
 
 **To do later (noted 13 Nov 2026):**
-- RailLens backend: move the memory settings from `JAVA_TOOL_OPTIONS` into the `Dockerfile`; load the timetable snapshot (`ScheduleSnapshotService`) with one joined query instead of per-train/per-station lookups; build it at startup so the first visitor after a wake-up doesn't wait about 40 s for stats, rankings or the network map.
 - RailLens backend runs in Render **Oregon** but its database is in Neon **Sydney**: every query crosses the Pacific. Recreating the backend in Singapore (and moving the database to Singapore) would speed up everything.
-- RailOps: move to Spring Boot 4 (Spring Framework 7) before **28 Feb 2027**. Boot 3.5 / Framework 6.2 no longer get open-source security fixes; three Spring CVEs that don't affect RailOps are accepted in `railops/.trivyignore` until then, and the version overrides in `railops/pom.xml` (Jackson, Netty, Tomcat, snappy, lz4, BouncyCastle) can go when Boot 4 lands.
+
+**Moving RailLens to Singapore (started 13 Nov 2026; the switch is still to do)**
+
+Why: the backend ran in Render **Oregon** and its database in Neon **Sydney**, so every query crossed the Pacific, and users in India were far from both. Now both are in **Singapore**, next to RailOps.
+
+Done so far (nothing live has changed yet):
+- New Neon project **`raillens`** (`floral-voice-54073047`, Singapore, Postgres 18) holds a full copy of the RailLens database, checked row by row against the original. The old database in **PersonalProjects** (Sydney) is untouched.
+- New Render web service **`raillens-api`** (`srv-dbrjrcrm8hqs73d8ikl0`, Singapore, free) at **`https://raillens-api.onrender.com`**, deploying `main`, already pointing at the new database. It cannot start until it has the four secrets below.
+- The app (`src/config/env.ts`) and RailOps' defaults (`print-env.sh`, `render.env.example`, compose) now use the new address.
+- `train-db/scripts/neon_copy.py` repeats the copy (reads both database URLs from environment variables).
+
+Your part:
+1. Render → **`raillens-train-db`** (the old one) → **Environment**. Copy these four values **exactly** into Render → **`raillens-api`** → **Environment**:
+   - `RAILLENS_JWT_SECRET` (a different value would sign everyone out)
+   - `RAILLENS_MFA_ENCRYPTION_KEY` (**must** match: it decrypts the admins' authenticator secrets stored in the database)
+   - `RAILLENS_CLIENT_IP_PROXY_SECRET` (must match Vercel's `RAILLENS_PROXY_SECRET`)
+   - `RAILLENS_ADMIN_API_KEY`
+   Also copy anything else the old service has that the new one doesn't, **except** `DB_*`, `SPRING_DATASOURCE_*` and `JAVA_TOOL_OPTIONS` (the new service has its own database settings, and the memory settings are now in the `Dockerfile`).
+2. `raillens-api` → **Settings** → **Health Check Path**: `/actuator/health`.
+3. Tell Claude the secrets are in. Claude then, at a quiet moment:
+   1. makes the final copy (`neon_copy.py reset`, `schema`, `data`, `verify`), so accounts created since the first copy come along;
+   2. checks `https://raillens-api.onrender.com/actuator/health`, `/api/v1/stats` and a sign-in;
+   3. sets Vercel `NEXT_PUBLIC_API_BASE_URL` = `https://raillens-api.onrender.com/api/v1` and redeploys the website;
+   4. sets `RAILOPS_RAILLENS_BASE_URL` = `https://raillens-api.onrender.com/api/v1` on RailOps identity and reservation.
+   If you have `RAILLENS_API_URL` in your local `deploy/render/render.env`, change it to the new address too.
+4. Build the Android app only after the switch: version 1.1 already points at the new address.
+5. Keep the old service and database for a week as the way back: put the old address back into Vercel's `NEXT_PUBLIC_API_BASE_URL` and redeploy. After that, suspend `raillens-train-db` and delete the `raillens` database in PersonalProjects.
+
+Anything written to the old backend between the final copy and the website switch (a sign-up or a password change in those few minutes) is not carried over, so do the switch when nobody is using it.
 
 ---
 
@@ -78,7 +105,7 @@ By default, both services publish every commit automatically:
 To merge now and deploy later:
 
 **Render (backend)**
-1. Open `raillens-train-db` → **Settings** → **Build & Deploy** → **Auto-Deploy**.
+1. Open `raillens-api` → **Settings** → **Build & Deploy** → **Auto-Deploy**.
 2. Set it to **Off** (it may be labelled **No**). Save.
 3. When you want to go live: **Manual Deploy** → **Deploy latest commit**.
 
@@ -140,7 +167,7 @@ If a migration fails, nothing is half-done: the database rolls that migration ba
 
 ### 6.1 Environment variables on Render
 
-Render → `raillens-train-db` → **Environment**. `render.yaml` lists them too, but Render only reads that file if the service was created as a *Blueprint*. If you created the service by hand, add them here yourself.
+Render → `raillens-api` → **Environment**. `render.yaml` lists them too, but Render only reads that file if the service was created as a *Blueprint*. If you created the service by hand, add them here yourself.
 
 | Variable | What to put | Secret? | Since |
 |---|---|---|---|
@@ -189,7 +216,7 @@ Do step 3 right after step 1. Until you finish it, anyone who knows your passwor
 Only after the backend is live (Section 6).
 
 1. Vercel → project → **Settings → Environment Variables** (Production):
-   - `NEXT_PUBLIC_API_BASE_URL` = `https://raillens-train-db.onrender.com/api/v1`
+   - `NEXT_PUBLIC_API_BASE_URL` = `https://raillens-api.onrender.com/api/v1`
    - `NEXT_PUBLIC_SITE_URL` = `https://rail-lens-frontend.vercel.app`
    - `RAILLENS_PROXY_SECRET` = **exactly** the value of `RAILLENS_CLIENT_IP_PROXY_SECRET` on Render (Phase 2B). Mark it *Sensitive*. Never give it a `NEXT_PUBLIC_` name: that would publish it in the website's JavaScript.
 
@@ -216,7 +243,7 @@ Only after the backend is live (Section 6).
 
 Only after the backend is live. "Deploying" the app means building a new APK and sharing it.
 
-1. Check `src/config/env.ts`: `LIVE_BASE_URL` must be `https://raillens-train-db.onrender.com/api/v1`, and `USE_LOCAL_BACKEND` must be `false`.
+1. Check `src/config/env.ts`: `LIVE_BASE_URL` must be `https://raillens-api.onrender.com/api/v1`, and `USE_LOCAL_BACKEND` must be `false`.
    Check `src/config/login.ts` (Phase 4D): `LOGIN_PROVIDER` is `'raillens'` until you do the app switch in Section 9b, and `BOOKING_ENABLED` is `false` until Section 9c. `RAILOPS_BASE_URL` must be your RailOps gateway address (pre-filled `https://railops-gateway.onrender.com`).
 2. In `android/app/build.gradle`, raise `versionCode` by 1 (for example `1` → `2`) and set `versionName` (for example `"1.1"`). Phones refuse an "update" with the same `versionCode`.
 3. Make sure `android/keystore.properties` and your `release.keystore` exist on this computer. They are not in git, so keep backups. Without them the APK is signed with the public debug key, and antivirus apps flag it.
@@ -242,7 +269,7 @@ Things to know first:
 - **Since Phase 3B, RailOps gets its trains from RailLens.** A new RailOps database has no trains at all. After deploying, an admin opens trains for booking: RailOps web app → **Run operations** → **Open a train for booking** (train number, dates, coaches). Step by step: `railops/docs/runbooks/open-trains-for-booking.md`.
   - So **deploy the RailLens backend before RailOps**, and keep it reachable. RailOps only needs it when staff open trains, not for bookings.
   - In RailOps' `deploy/render/render.env`:
-    - `RAILLENS_API_URL` is where RailLens' API is (already filled in with `https://raillens-train-db.onrender.com/api/v1`).
+    - `RAILLENS_API_URL` is where RailLens' API is (already filled in with `https://raillens-api.onrender.com/api/v1`).
     - `RAILLENS_WEB_ORIGIN` is the RailLens website, which may call RailOps from the browser (needed for booking in RailLens later). `print-env.sh` turns both into the right service settings.
 - **Redis:** Render allows only **one free Key Value per workspace**, and yours is already used by `devtoolbox-redis` (Oregon). So RailOps uses **Redis Cloud's free database** instead (README Step 7, option B): put its host, port and password in `render.env` (`REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`). That free database has no TLS. It only holds short-lived counters keyed by visitor IP or user ID; move to a TLS Redis before real users.
 - **Kafka (Confluent):** create a **Basic** cluster, not the Standard one the sign-up screen suggests ($0.75/hour). Keep `KAFKA_MAX_PARTITIONS=2` in `render.env`: RailOps' full topic sizes (120 partitions) would bill about $300/month in extra capacity on Basic; at 2 they fit in the free part. It must be set before the services first start.
@@ -335,8 +362,8 @@ Until you do this, RailOps keeps its **simulated** payment (the "Pay (simulated)
 ## 10. Smoke test after every deploy (5 minutes)
 
 **Backend**
-- [ ] `https://raillens-train-db.onrender.com/actuator/health` shows `{"status":"UP"}`
-- [ ] `https://raillens-train-db.onrender.com/api/v1/stats` returns numbers, not an error
+- [ ] `https://raillens-api.onrender.com/actuator/health` shows `{"status":"UP"}`
+- [ ] `https://raillens-api.onrender.com/api/v1/stats` returns numbers, not an error
 - [ ] Render logs show no `ERROR` lines since the deploy
 
 **Website**
@@ -406,6 +433,12 @@ Only when **all** of these are true: the Phase 2A website is live, every admin h
 
 | Date | What changed |
 |---|---|
+| 14 Nov 2026 | **Backend-down message on the website and in the Android app.** When a request gets no answer or Render answers 502/503/504, a bar at the top says the server is **waking up** (amber, counting down to "try again in about 1:00"; 1:30 for booking), **down** (red, "crashed or restarting, try again later", after two 5xx answers in a row or 3-4 minutes without an answer; out-of-memory crashes look the same), or, in the app, **offline** (grey, the phone has no connection). It keeps checking the health endpoint (every 5 s, every 30 s once down) and turns green, "back, please try again", when the server answers. It also checks quietly when a request is slow (app: after 6 s) or when you come back after 2+ minutes away. No background polling, so it doesn't keep the free services awake. Nothing to configure. Not yet in the RailOps staff app. |
+| 14 Nov 2026 | **Both backends on Java 25 (LTS)** with an AOT start-up cache built into every image. RailOps: identity about 37% and reservation about 39% faster to a ready app with Render's own JVM flags; same memory; all 188 unit/contract and 89 integration tests pass; the Java 25 base image has no fixable HIGH/CRITICAL findings. RailLens moves from Java 27 (short-term release, outside Spring Boot 4.1's supported range) to 25: all 235 tests pass, start-up about 2x faster with the cache. CI uses Java 25 in both repos (`.github/workflows/ci.yml`). **RailLens smart search:** "from X to Y" now respects direction (it used to list trains going the other way too); "delhi to mumbai" works (plain "X to Y"; a city name means all its stations). **RailLens caches** no longer expire every 15 minutes (the network analysis was being rebuilt during use); every data change clears them, sizes are bounded per cache, and station/train intelligence is cached (70 ms -> 4 ms). Stress-tested: 5,100 requests over 2,000 stations/trains, all OK, memory 452 MB of 512. |
+| 14 Nov 2026 | **Website bug fixed:** `/stats`, `/rankings`, `/network`, `/fun-facts` and `/achievements` were built as static pages; the last Vercel build ran while the backend was unreachable, so all five showed "Unable to reach the server" to everyone until the next deploy. They now render on request, and the server keeps the backend's successful answers for an hour (served instantly while the backend sleeps; errors are never stored). Train and station pages use the same cache, which also halves their backend calls. **RailLens backend:** Java AOT cache built into the image (start-up about 2x faster, measured). **Dependencies:** Next.js 16.4.6 and minor/patch updates in the website, app and staff app; all fixable security advisories fixed (4 low ones left in React Native's CLI tooling, fix would downgrade the CLI). Major upgrades (TypeScript 7, React Native 0.88, Babel 8, jsdom 31) left for a separate step. |
+| 14 Nov 2026 | **RailOps on Spring Boot 4.1.2** (Spring Framework 7.0.10, Spring Cloud 2025.1.4 with Gateway 5, Jackson 3, Spring Security 7, Kafka client 4.2, Resilience4j for Boot 4, Testcontainers 2). All 188 unit/contract and 89 integration tests pass; the security scan finds nothing, so `.trivyignore` is gone and only the snappy/lz4/BouncyCastle pins remain. No settings change on Render. |
+| 14 Nov 2026 | **Move to Singapore** prepared: new database copied and verified, new `raillens-api` service, new address in the app and RailOps settings. The switch waits for the four secrets (Section 2). |
+| 14 Nov 2026 | Speed. **RailLens backend:** the timetable snapshot behind stats, rankings and the network map loads in one query instead of about 22,800 (each schedule row used to fetch its train and station separately); network stats and fuzzy search were bypassing their own caches and recomputed on every request (network stats: 9 s locally every time, now 0.02 s after the first); the expensive caches are built in the background right after start-up, so the first visitor after a wake-up no longer waits; memory settings now in the `Dockerfile` (heap 192 MB, total about 435 MB measured; the `JAVA_TOOL_OPTIONS` variable on Render can be deleted, but leaving it is harmless). Same responses, checked byte for byte on the full timetable. **RailOps:** every service image now ships a class data sharing archive (17-33% faster start-up measured); the migrator classpath in Kubernetes and compose moved with it. No new settings anywhere. |
 | 13 Nov 2026 | RailOps CI security scan: patched Jackson, Netty, Tomcat, snappy-java, lz4-java, BouncyCastle; staff web image on nginx 1.30 with Alpine updates applied at build; `.trivyignore` for three non-applicable Spring CVEs (expires 28 Feb 2027); Boot 4 move added to the to-do list. No new settings. |
 | 12 Nov 2026 | First version: covers Phases 0, 1 and 2A, holding merges back from going live, the database check, and the Phase 2A admin setup. |
 | 12 Nov 2026 | Phase 2B: two matching proxy secrets (Render + Vercel), merge order 2A → 2B, cookie checks in the smoke test, three new troubleshooting rows. |

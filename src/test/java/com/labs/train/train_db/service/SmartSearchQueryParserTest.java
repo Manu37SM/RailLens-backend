@@ -92,4 +92,14 @@ class SmartSearchQueryParserTest {
 
                 assertThat(SmartSearchQueryParser.parse("TRAINS FROM ndls TO hwh")).isInstanceOf(FromTo.class);
         }
+
+        @Test
+        void parsesPlainFromToWithoutTheWordTrains() {
+
+                assertThat(SmartSearchQueryParser.parse("delhi to mumbai")).isEqualTo(new FromTo("delhi", "mumbai"));
+                assertThat(SmartSearchQueryParser.parse("from NDLS to HWH")).isEqualTo(new FromTo("NDLS", "HWH"));
+                assertThat(SmartSearchQueryParser.parse("trains longer than 10 hours"))
+                                .isInstanceOf(SmartSearchQueryParser.LongerThanHours.class);
+                assertThat(SmartSearchQueryParser.parse("rajdhani")).isNull();
+        }
 }

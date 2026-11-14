@@ -7,9 +7,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.labs.train.train_db.config.CacheConfig;
 import com.labs.train.train_db.entity.Station;
 import com.labs.train.train_db.entity.TrainSchedule;
 import com.labs.train.train_db.exception.ResourceNotFoundException;
@@ -31,6 +33,7 @@ public class StationIntelligenceService {
         private final TrainScheduleRepository trainScheduleRepository;
         private final RailwayNetworkService railwayNetworkService;
 
+        @Cacheable(cacheNames = CacheConfig.STATION_INTELLIGENCE_CACHE, key = "#stationCode")
         public StationIntelligenceResponse getIntelligence(String stationCode) {
 
                 Station station = stationRepository.findByStationCode(stationCode)

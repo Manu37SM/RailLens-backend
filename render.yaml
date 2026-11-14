@@ -1,6 +1,7 @@
 services:
   - type: web
-    name: raillens-train-db
+    name: raillens-api
+    region: singapore
     runtime: docker
     dockerfilePath: ./Dockerfile
     plan: free

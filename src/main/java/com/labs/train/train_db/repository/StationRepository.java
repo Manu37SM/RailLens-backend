@@ -28,4 +28,7 @@ public interface StationRepository extends JpaRepository<Station, Long> {
     @Query("SELECT new com.labs.train.train_db.model.StationSearchResponse(s.stationCode, s.stationName) FROM Station s")
     List<StationSearchResponse> findAllSearchKeys();
 
+
+    /** All stations of a city by name ("delhi" -> DELHI, NEW DELHI, DELHI CANTT...), for smart search. */
+    List<Station> findTop25ByStationNameContainingIgnoreCaseOrderByStationCode(String namePart);
 }

@@ -193,15 +193,7 @@ public class RailwayDataImportService {
             return;
         }
 
-        clearCache(CacheConfig.TRAIN_DETAILS_CACHE);
-        clearCache(CacheConfig.STATION_DETAILS_CACHE);
-        clearCache(CacheConfig.STATS_CACHE);
-        clearCache(CacheConfig.SEARCH_INDEX_CACHE);
-        clearCache(CacheConfig.NETWORK_CACHE);
-        clearCache(CacheConfig.RANKINGS_CACHE);
-        clearCache(CacheConfig.FUN_STATS_CACHE);
-        clearCache(CacheConfig.ACHIEVEMENTS_CACHE);
-        clearCache(CacheConfig.SCHEDULE_SNAPSHOT_CACHE);
+        CacheConfig.DATASET_CACHES.forEach(this::clearCache);
     }
 
     private void clearCache(String cacheName) {

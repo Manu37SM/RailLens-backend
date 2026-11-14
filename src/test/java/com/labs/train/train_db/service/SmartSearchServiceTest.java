@@ -149,4 +149,58 @@ class SmartSearchServiceTest {
                 assertThat(response.matchCount()).isZero();
                 assertThat(response.interpretedAs()).contains("NOWHERE");
         }
+
+        @Test
+        void fromToKeepsOnlyTrainsRunningInThatDirection() {
+
+                Train outbound = train(1L, "9101");
+                Train inbound = train(2L, "9102");
+
+                Station a = station("A");
+                Station b = station("B");
+
+                java.util.List<TrainSchedule> all = new java.util.ArrayList<>(List.of(
+                                schedule(outbound, a, 1, null, LocalTime.of(8, 0), 0),
+                                schedule(outbound, b, 2, LocalTime.of(9, 0), null, 100),
+                                schedule(inbound, b, 1, null, LocalTime.of(10, 0), 0),
+                                schedule(inbound, a, 2, LocalTime.of(11, 0), null, 100)));
+
+                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()).thenReturn(all);
+                when(stationRepository.findByStationCode("A")).thenReturn(Optional.of(a));
+                when(stationRepository.findByStationCode("B")).thenReturn(Optional.of(b));
+
+                SmartSearchResponse response = service().search("A to B");
+
+                assertThat(response.recognized()).isTrue();
+                assertThat(response.interpretedAs()).isEqualTo("Trains from A to B");
+                assertThat(response.trains()).extracting(t -> t.trainNumber()).containsExactly("9101");
+        }
+
+        @Test
+        void aCityNameMeansAllItsStations() {
+
+                Train fromNewDelhi = train(1L, "9201");
+                Train fromOldDelhiWrongWay = train(2L, "9202");
+
+                Station ndls = station("NDLS");
+                Station dli = station("DLI");
+                Station mmct = station("MMCT");
+
+                java.util.List<TrainSchedule> all = new java.util.ArrayList<>(List.of(
+                                schedule(fromNewDelhi, ndls, 1, null, LocalTime.of(16, 0), 0),
+                                schedule(fromNewDelhi, mmct, 2, LocalTime.of(8, 0), null, 1386),
+                                schedule(fromOldDelhiWrongWay, mmct, 1, null, LocalTime.of(10, 0), 0),
+                                schedule(fromOldDelhiWrongWay, dli, 2, LocalTime.of(9, 0), null, 1390)));
+
+                when(trainScheduleRepository.findAllByOrderByTrain_IdAscSequenceNoAsc()).thenReturn(all);
+                when(stationRepository.findTop25ByStationNameContainingIgnoreCaseOrderByStationCode("delhi"))
+                                .thenReturn(List.of(dli, ndls));
+                when(stationRepository.findTop25ByStationNameContainingIgnoreCaseOrderByStationCode("mumbai"))
+                                .thenReturn(List.of(mmct));
+
+                SmartSearchResponse response = service().search("delhi to mumbai");
+
+                assertThat(response.interpretedAs()).isEqualTo("Trains from DELHI (2 stations) to MMCT");
+                assertThat(response.trains()).extracting(t -> t.trainNumber()).containsExactly("9201");
+        }
 }

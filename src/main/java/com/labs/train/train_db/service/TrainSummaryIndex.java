@@ -24,9 +24,30 @@ class TrainSummaryIndex {
         private final ScheduleSnapshotService scheduleSnapshotService;
         private final JourneyDayCalculator journeyDayCalculator;
 
+        /**
+         * @param stationCodes every station on the route, for fast "stops at" checks
+         * @param stopSequence the same stations in route order, for direction ("from X to Y")
+         */
         record TrainSummary(
-                        String trainNumber, String trainName, Set<String> stationCodes,
+                        String trainNumber, String trainName, Set<String> stationCodes, List<String> stopSequence,
                         int distanceKm, long journeyMinutes, int halts) {
+
+                /** True if the train calls at {@code from} and later at {@code to}, i.e. runs in that direction. */
+                boolean runsFromTo(String from, String to) {
+                        return runsFromAnyToAny(Set.of(from), Set.of(to));
+                }
+
+                /** True if the train calls at one of {@code from} and later at one of {@code to} (city to city). */
+                boolean runsFromAnyToAny(Set<String> from, Set<String> to) {
+                        boolean boarded = false;
+                        for (String code : stopSequence) {
+                                if (boarded && to.contains(code)) {
+                                        return true;
+                                }
+                                boarded |= from.contains(code);
+                        }
+                        return false;
+                }
         }
 
         @Cacheable(cacheNames = CacheConfig.SEARCH_INDEX_CACHE, key = "'trainSummaries'", sync = true)
@@ -63,13 +84,14 @@ class TrainSummaryIndex {
                                                 journeyDays.get(journeyDays.size() - 1), last.getArrivalTime()));
                         }
 
-                        Set<String> stationCodes = route.stream()
+                        List<String> stopSequence = route.stream()
                                         .map(schedule -> schedule.getStation().getStationCode())
-                                        .collect(Collectors.toCollection(HashSet::new));
+                                        .toList();
+                        Set<String> stationCodes = new HashSet<>(stopSequence);
 
                         summaries.add(new TrainSummary(
                                         first.getTrain().getTrainNumber(), first.getTrain().getTrainName(),
-                                        stationCodes, distanceKm, journeyMinutes, Math.max(0, route.size() - 2)));
+                                        stationCodes, stopSequence, distanceKm, journeyMinutes, Math.max(0, route.size() - 2)));
                 }
 
                 return summaries;

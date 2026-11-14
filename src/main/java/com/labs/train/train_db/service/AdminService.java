@@ -36,16 +36,7 @@ public class AdminService {
 
         public void clearAllCaches() {
 
-                List<String> cacheNames = List.of(
-                                CacheConfig.TRAIN_DETAILS_CACHE,
-                                CacheConfig.STATION_DETAILS_CACHE,
-                                CacheConfig.STATS_CACHE,
-                                CacheConfig.SEARCH_INDEX_CACHE,
-                                CacheConfig.NETWORK_CACHE,
-                                CacheConfig.RANKINGS_CACHE,
-                                CacheConfig.FUN_STATS_CACHE,
-                                CacheConfig.ACHIEVEMENTS_CACHE,
-                                CacheConfig.SCHEDULE_SNAPSHOT_CACHE);
+                List<String> cacheNames = CacheConfig.DATASET_CACHES;
 
                 for (String cacheName : cacheNames) {
 

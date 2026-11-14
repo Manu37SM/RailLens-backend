@@ -13,7 +13,9 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +34,18 @@ import lombok.extern.slf4j.Slf4j;
 public class RailwayNetworkService {
 
         private final ScheduleSnapshotService scheduleSnapshotService;
+
+        /**
+         * This bean's Spring proxy. A call from inside the class to a {@code @Cacheable} method skips the cache, so such
+         * calls go through {@link #cached()}. Null when a unit test creates the class with {@code new}.
+         */
+        @Lazy
+        @Autowired
+        private RailwayNetworkService self;
+
+        private RailwayNetworkService cached() {
+                return self != null ? self : this;
+        }
 
         @Cacheable(cacheNames = CacheConfig.NETWORK_CACHE, sync = true)
         public RailwayNetworkSnapshot buildSnapshot() {
@@ -116,7 +130,7 @@ public class RailwayNetworkService {
 
         public NetworkStatsResponse getNetworkStats() {
 
-                RailwayNetworkSnapshot snapshot = buildSnapshot();
+                RailwayNetworkSnapshot snapshot = cached().buildSnapshot();
 
                 int totalEdges = snapshot.stations.values().stream()
                                 .mapToInt((StationNetworkNode node) -> node.degree())
@@ -258,9 +272,6 @@ public class RailwayNetworkService {
                 int[] queue = new int[n];
                 int[] visitOrder = new int[n];
 
-                @SuppressWarnings("unchecked")
-                List<Integer>[] predecessors = new List[n];
-
                 for (int source = 0; source < n; source++) {
 
                         int queueHead = 0;
@@ -285,10 +296,6 @@ public class RailwayNetworkService {
 
                                         if (distance[w] == distance[v] + 1) {
                                                 sigma[w] += sigma[v];
-                                                if (predecessors[w] == null) {
-                                                        predecessors[w] = new ArrayList<>();
-                                                }
-                                                predecessors[w].add(v);
                                         }
                                 }
                         }
@@ -315,20 +322,25 @@ public class RailwayNetworkService {
 
                         diameter = Math.max(diameter, eccentricity);
 
+                        // Brandes back-propagation in successor form: v's successors on shortest paths are its neighbours
+                        // one step further out, and in reverse BFS order they are all final before v. Same result as
+                        // keeping predecessor lists, without allocating a list per node on every one of the n passes.
                         for (int i = visitCount - 1; i >= 0; i--) {
 
-                                int w = visitOrder[i];
-                                List<Integer> preds = predecessors[w];
+                                int v = visitOrder[i];
+                                int nextDistance = distance[v] + 1;
+                                double sum = 0.0;
 
-                                if (preds != null) {
-                                        for (int v : preds) {
-                                                double contribution = (sigma[v] / sigma[w]) * (1 + dependency[w]);
-                                                dependency[v] += contribution;
+                                for (int w : adjacency[v]) {
+                                        if (distance[w] == nextDistance) {
+                                                sum += (sigma[v] / sigma[w]) * (1 + dependency[w]);
                                         }
                                 }
 
-                                if (w != source) {
-                                        betweenness[w] += dependency[w];
+                                dependency[v] = sum;
+
+                                if (v != source) {
+                                        betweenness[v] += sum;
                                 }
                         }
 
@@ -337,7 +349,6 @@ public class RailwayNetworkService {
                                 distance[node] = -1;
                                 sigma[node] = 0.0;
                                 dependency[node] = 0.0;
-                                predecessors[node] = null;
                         }
                 }
 

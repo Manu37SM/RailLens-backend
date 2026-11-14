@@ -52,6 +52,11 @@ final class SmartSearchQueryParser {
                         "trains?\\s+from\\s+(.+?)\\s+to\\s+(.+)",
                         Pattern.CASE_INSENSITIVE);
 
+        /** "delhi to mumbai", "from NDLS to HWH": what people actually type. Checked last, so it never shadows the rest. */
+        private static final Pattern PLAIN_FROM_TO = Pattern.compile(
+                        "(?:from\\s+)?(.+?)\\s+to\\s+(.+)",
+                        Pattern.CASE_INSENSITIVE);
+
         private static final Pattern LONGER_THAN_HOURS = Pattern.compile(
                         "trains?\\s+longer\\s+than\\s+(\\d+)\\s*h(?:ou)?rs?",
                         Pattern.CASE_INSENSITIVE);
@@ -116,6 +121,10 @@ final class SmartSearchQueryParser {
 
                 if ((matcher = FEWER_THAN_HALTS.matcher(trimmed)).matches()) {
                         return new FewerThanHalts(Integer.parseInt(matcher.group(1)));
+                }
+
+                if ((matcher = PLAIN_FROM_TO.matcher(trimmed)).matches()) {
+                        return new FromTo(matcher.group(1).trim(), matcher.group(2).trim());
                 }
 
                 return null;

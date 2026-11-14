@@ -7,7 +7,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -40,6 +43,24 @@ public class TrainService {
         private final TrainScheduleRepository trainScheduleRepository;
         private final JourneyDayCalculator journeyDayCalculator;
 
+        /**
+         * This bean's Spring proxy. A call from inside the class to a {@code @Cacheable} method skips the cache, so such
+         * calls go through {@link #cached()}. Null when a unit test creates the class with {@code new}.
+         */
+        @Lazy
+        @Autowired
+        private TrainService self;
+
+        private TrainService cached() {
+                return self != null ? self : this;
+        }
+
+        // A new station/train changes search results, stats and the network: clear everything built from the data.
+        @CacheEvict(allEntries = true, cacheNames = {
+                        CacheConfig.TRAIN_DETAILS_CACHE, CacheConfig.STATION_DETAILS_CACHE, CacheConfig.STATS_CACHE,
+                        CacheConfig.SEARCH_INDEX_CACHE, CacheConfig.NETWORK_CACHE, CacheConfig.RANKINGS_CACHE,
+                        CacheConfig.FUN_STATS_CACHE, CacheConfig.ACHIEVEMENTS_CACHE, CacheConfig.SCHEDULE_SNAPSHOT_CACHE,
+                        CacheConfig.STATION_INTELLIGENCE_CACHE, CacheConfig.TRAIN_INTELLIGENCE_CACHE })
         @Transactional
         public TrainSearchResponse createTrain(CreateTrainRequest request) {
 
@@ -100,7 +121,7 @@ public class TrainService {
                 String queryLower = query.toLowerCase(Locale.ROOT);
                 int maxDistance = FuzzyMatch.maxDistanceFor(queryLower.length());
 
-                return fuzzySearchIndex().stream()
+                return cached().fuzzySearchIndex().stream()
                                 .map(train -> Map.entry(train, fuzzyScore(train, queryLower)))
                                 .filter(entry -> entry.getValue() <= maxDistance)
                                 .sorted(Comparator.comparingInt(entry -> entry.getValue()))

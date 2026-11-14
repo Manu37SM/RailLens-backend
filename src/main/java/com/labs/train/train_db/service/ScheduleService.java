@@ -1,7 +1,6 @@
 package com.labs.train.train_db.service;
 
 import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,10 +28,12 @@ public class ScheduleService {
         private final StationRepository stationRepository;
         private final TrainScheduleRepository trainScheduleRepository;
 
-        @Caching(evict = {
-                        @CacheEvict(cacheNames = CacheConfig.TRAIN_DETAILS_CACHE, key = "#request.trainNumber"),
-                        @CacheEvict(cacheNames = CacheConfig.STATION_DETAILS_CACHE, key = "#request.stationCode")
-        })
+        // A new stop changes routes, stats and the network, not just this train and station: clear everything.
+        @CacheEvict(allEntries = true, cacheNames = {
+                        CacheConfig.TRAIN_DETAILS_CACHE, CacheConfig.STATION_DETAILS_CACHE, CacheConfig.STATS_CACHE,
+                        CacheConfig.SEARCH_INDEX_CACHE, CacheConfig.NETWORK_CACHE, CacheConfig.RANKINGS_CACHE,
+                        CacheConfig.FUN_STATS_CACHE, CacheConfig.ACHIEVEMENTS_CACHE, CacheConfig.SCHEDULE_SNAPSHOT_CACHE,
+                        CacheConfig.STATION_INTELLIGENCE_CACHE, CacheConfig.TRAIN_INTELLIGENCE_CACHE })
         public ScheduleResponse createSchedule(ScheduleRequest request) {
 
                 log.info(

@@ -8,9 +8,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.labs.train.train_db.config.CacheConfig;
 import com.labs.train.train_db.entity.TrainSchedule;
 import com.labs.train.train_db.exception.ResourceNotFoundException;
 import com.labs.train.train_db.model.TrainIntelligenceResponse;
@@ -32,6 +34,7 @@ public class TrainIntelligenceService {
         private final JourneyDayCalculator journeyDayCalculator;
         private final RailwayNetworkService railwayNetworkService;
 
+        @Cacheable(cacheNames = CacheConfig.TRAIN_INTELLIGENCE_CACHE, key = "#trainNumber")
         public TrainIntelligenceResponse getIntelligence(String trainNumber) {
 
                 List<TrainSchedule> route = trainScheduleRepository

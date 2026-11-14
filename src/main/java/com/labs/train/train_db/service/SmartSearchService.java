@@ -2,6 +2,7 @@ package com.labs.train.train_db.service;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -117,8 +118,8 @@ public class SmartSearchService {
 
         private SmartSearchResponse fromTo(List<TrainSummary> index, String fromToken, String toToken) {
 
-                Optional<String> from = resolveStation(fromToken);
-                Optional<String> to = resolveStation(toToken);
+                Optional<Place> from = resolvePlace(fromToken);
+                Optional<Place> to = resolvePlace(toToken);
 
                 if (from.isEmpty() || to.isEmpty()) {
                         String missing = from.isEmpty() ? fromToken : toToken;
@@ -127,8 +128,42 @@ public class SmartSearchService {
 
                 return filterAndRespond(
                                 index,
-                                s -> s.stationCodes().contains(from.get()) && s.stationCodes().contains(to.get()),
-                                "Trains from " + from.get() + " to " + to.get());
+                                s -> s.runsFromAnyToAny(from.get().codes(), to.get().codes()),
+                                "Trains from " + from.get().label() + " to " + to.get().label());
+        }
+
+        /** One station, or every station of a city ("delhi" means DELHI, NEW DELHI, DELHI CANTT...). */
+        private record Place(String label, Set<String> codes) {
+        }
+
+        private Optional<Place> resolvePlace(String token) {
+
+                String candidate = token.trim();
+
+                if (candidate.isEmpty()) {
+                        return Optional.empty();
+                }
+
+                Optional<Station> byCode = stationRepository.findByStationCode(candidate.toUpperCase());
+                if (byCode.isPresent()) {
+                        String code = byCode.get().getStationCode();
+                        return Optional.of(new Place(code, Set.of(code)));
+                }
+
+                List<Station> city = stationRepository.findTop25ByStationNameContainingIgnoreCaseOrderByStationCode(candidate);
+                if (city.size() == 1) {
+                        String code = city.get(0).getStationCode();
+                        return Optional.of(new Place(code, Set.of(code)));
+                }
+                if (city.size() > 1) {
+                        Set<String> codes = city.stream()
+                                        .map((Station station) -> station.getStationCode())
+                                        .collect(java.util.stream.Collectors.toUnmodifiableSet());
+                        return Optional.of(new Place(
+                                        candidate.toUpperCase() + " (" + codes.size() + " stations)", codes));
+                }
+
+                return resolveStation(candidate).map(code -> new Place(code, Set.of(code)));
         }
 
         private SmartSearchResponse filterAndRespond(
